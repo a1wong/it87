@@ -1894,6 +1894,7 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		"it8720",
 		"it8721",
 		"it8728",
+		"it8783",
 	};
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);

@@ -19,6 +19,7 @@
  *            IT8726F  Super I/O chip w/LPC interface
  *            IT8728F  Super I/O chip w/LPC interface
  *            IT8758E  Super I/O chip w/LPC interface
+ *            IT8783E/F Super I/O chip w/LPC interface
  *            Sis950   A clone of the IT8705F
  *
  *  Copyright (C) 2001 Chris Gauthron
@@ -59,7 +60,7 @@
 
 #define DRVNAME "it87"
 
-enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728 };
+enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8783 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -137,13 +138,17 @@ static inline void superio_exit(void)
 #define IT8721F_DEVID 0x8721
 #define IT8726F_DEVID 0x8726
 #define IT8728F_DEVID 0x8728
+#define IT8783E_DEVID 0x8783
 #define IT87_ACT_REG  0x30
 #define IT87_BASE_REG 0x60
 
 /* Logical device 7 registers (IT8712F and later) */
+#define IT87_SIO_GPIO1_REG	0x25
 #define IT87_SIO_GPIO3_REG	0x27
 #define IT87_SIO_GPIO5_REG	0x29
+#define IT87_SIO_PINX1_REG	0x2a	/* Pin selection */
 #define IT87_SIO_PINX2_REG	0x2c	/* Pin selection */
+#define IT87_SIO_SPI_REG	0xef	/* SPI function pin select */
 #define IT87_SIO_VID_REG	0xfc	/* VID value */
 #define IT87_SIO_BEEP_PIN_REG	0xf6	/* Beep pin mapping */
 
@@ -313,8 +318,12 @@ static u8 in_to_reg(const struct it87_data *data, int nr, long val)
 			lsb = 24;
 		else
 			lsb = 12;
-	} else
-		lsb = 16;
+	} else {
+		if (data->in_scaled & (1 << nr))
+			lsb = 32;
+		else
+			lsb = 16;
+	}
 
 	val = DIV_ROUND_CLOSEST(val, lsb);
 	return SENSORS_LIMIT(val, 0, 255);
@@ -327,8 +336,12 @@ static int in_from_reg(const struct it87_data *data, int nr, int val)
 			return val * 24;
 		else
 			return val * 12;
-	} else
-		return val * 16;
+	} else {
+		if (data->in_scaled & (1 << nr))
+			return val * 32;
+		else
+			return val * 16;
+	}
 }
 
 static inline u8 FAN_TO_REG(long rpm, int div)
@@ -407,7 +420,8 @@ static inline int has_16bit_fans(const struct it87_data *data)
 	    || data->type == it8718
 	    || data->type == it8720
 	    || data->type == it8721
-	    || data->type == it8728;
+	    || data->type == it8728
+	    || data->type == it8783;
 }
 
 static inline int has_old_autopwm(const struct it87_data *data)
@@ -1651,6 +1665,9 @@ static int __init it87_find(unsigned short *address,
 	case IT8728F_DEVID:
 		sio_data->type = it8728;
 		break;
+	case IT8783E_DEVID:
+		sio_data->type = it8783;
+		break;
 	case 0xffff:	/* No device at all */
 		goto exit;
 	default:
@@ -1686,6 +1703,60 @@ static int __init it87_find(unsigned short *address,
 		/* The IT8705F has a different LD number for GPIO */
 		superio_select(5);
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+	} else if (sio_data->type == it8783) {
+		int reg25, reg27, reg2A, reg2C, regEF;
+
+		sio_data->skip_vid = 1;	/* No VID */
+
+		superio_select(GPIO);
+
+		reg25 = superio_inb(IT87_SIO_GPIO1_REG);
+		reg27 = superio_inb(IT87_SIO_GPIO3_REG);
+		reg2A = superio_inb(IT87_SIO_PINX1_REG);
+		reg2C = superio_inb(IT87_SIO_PINX2_REG);
+		regEF = superio_inb(IT87_SIO_SPI_REG);
+
+		/* Check if fan3 is there or not */
+		if ((reg27 & (1 << 0)) || !(reg2C & (1 << 2)))
+			sio_data->skip_fan |= (1 << 2);
+		if ((reg25 & (1 << 4))
+		    || (!(reg2A & (1 << 1)) && (regEF & (1 << 0))))
+			sio_data->skip_pwm |= (1 << 2);
+
+		/* Check if fan2 is there or not */
+		if (reg27 & (1 << 7))
+			sio_data->skip_fan |= (1 << 1);
+		if (reg27 & (1 << 3))
+			sio_data->skip_pwm |= (1 << 1);
+
+		/* VIN5 */
+		if ((reg27 & (1 << 0)) || (reg2C & (1 << 2)))
+			; /* No VIN5 */
+
+		/* VIN6 */
+		if ((reg27 & (1 << 1)) || (reg2C & (1 << 2)))
+			; /* No VIN6 */
+
+		/* VIN7 */
+		if ((reg27 & (1 << 2)) || (reg2C & (1 << 2))) {
+			/*
+			 * If the external VIN7 pin is disabled, route it to the
+			 * internal VCCH5V if that is not already done.
+			 */
+			if (!(reg2C & (1 << 1))) {
+				reg2C |= (1 << 1);
+				superio_outb(IT87_SIO_PINX2_REG, reg2C);
+				pr_notice("Routing internal VCCH to in7\n");
+			}
+		}
+
+		if (reg2C & (1 << 0))
+			sio_data->internal |= (1 << 0);
+		if (reg2C & (1 << 1))
+			sio_data->internal |= (1 << 1);
+
+		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+
 	} else {
 		int reg;
 
@@ -1694,8 +1765,8 @@ static int __init it87_find(unsigned short *address,
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
 		if (sio_data->type == it8721 || sio_data->type == it8728) {
 			/*
-			 * The IT8721F/IT8758E doesn't have VID pins at all,
-			 * not sure about the IT8728F.
+			 * The IT8721F/IT8758E/IT8783E/F don't have VID pins
+			 * at all, not sure about the IT8728F.
 			 */
 			sio_data->skip_vid = 1;
 		} else {
@@ -1867,6 +1938,11 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			data->in_scaled |= (1 << 7);	/* in7 is VSB */
 		if (sio_data->internal & (1 << 2))
 			data->in_scaled |= (1 << 8);	/* in8 is Vbat */
+	} else if (sio_data->type == it8783) {
+		if (sio_data->internal & (1 << 0))
+			data->in_scaled |= (1 << 3);	/* in3 is VCC5V */
+		if (sio_data->internal & (1 << 1))
+			data->in_scaled |= (1 << 7);	/* in7 is VCCH5V */
 	}
 
 	/* Initialize the IT87 chip */

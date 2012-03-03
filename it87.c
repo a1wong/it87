@@ -19,6 +19,8 @@
  *            IT8726F  Super I/O chip w/LPC interface
  *            IT8728F  Super I/O chip w/LPC interface
  *            IT8758E  Super I/O chip w/LPC interface
+ *            IT8771E  Super I/O chip w/LPC interface
+ *            IT8772E  Super I/O chip w/LPC interface
  *            IT8783E/F Super I/O chip w/LPC interface
  *            Sis950   A clone of the IT8705F
  *
@@ -67,7 +69,8 @@
 
 #define DRVNAME "it87"
 
-enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8783 };
+enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8771,
+	     it8772, it8783 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -149,6 +152,8 @@ static inline void superio_exit(void)
 #define IT8721F_DEVID 0x8721
 #define IT8726F_DEVID 0x8726
 #define IT8728F_DEVID 0x8728
+#define IT8771E_DEVID 0x8771
+#define IT8772E_DEVID 0x8772
 #define IT8783E_DEVID 0x8783
 #define IT87_ACT_REG  0x30
 #define IT87_BASE_REG 0x60
@@ -307,7 +312,9 @@ static inline int has_12mv_adc(const struct it87_data *data)
 	 * on selected inputs.
 	 */
 	return data->type == it8721
-	    || data->type == it8728;
+	    || data->type == it8728
+	    || data->type == it8771
+	    || data->type == it8772;
 }
 
 static inline int has_newer_autopwm(const struct it87_data *data)
@@ -315,9 +322,12 @@ static inline int has_newer_autopwm(const struct it87_data *data)
 	/*
 	 * IT8721F and later have separate registers for the temperature
 	 * mapping and the manual duty cycle.
+	 * [ Assume that also applies to IT8771 / IT8772 ]
 	 */
 	return data->type == it8721
-	    || data->type == it8728;
+	    || data->type == it8728
+	    || data->type == it8771
+	    || data->type == it8772;
 }
 
 static u8 in_to_reg(const struct it87_data *data, int nr, long val)
@@ -432,6 +442,8 @@ static inline int has_16bit_fans(const struct it87_data *data)
 	    || data->type == it8720
 	    || data->type == it8721
 	    || data->type == it8728
+	    || data->type == it8771
+	    || data->type == it8772
 	    || data->type == it8783;
 }
 
@@ -1676,6 +1688,12 @@ static int __init it87_find(unsigned short *address,
 	case IT8728F_DEVID:
 		sio_data->type = it8728;
 		break;
+	case IT8771E_DEVID:
+		sio_data->type = it8771;
+		break;
+	case IT8772E_DEVID:
+		sio_data->type = it8772;
+		break;
 	case IT8783E_DEVID:
 		sio_data->type = it8783;
 		break;
@@ -1774,10 +1792,11 @@ static int __init it87_find(unsigned short *address,
 		superio_select(GPIO);
 
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
-		if (sio_data->type == it8721 || sio_data->type == it8728) {
+		if (sio_data->type == it8721 || sio_data->type == it8728
+		    || sio_data->type == it8771 || sio_data->type == it8772) {
 			/*
 			 * The IT8721F/IT8758E don't have VID pins at all,
-			 * not sure about the IT8728F.
+			 * not sure about the IT8728F, IT8771E, IT8772E.
 			 */
 			sio_data->skip_vid = 1;
 		} else {
@@ -1824,7 +1843,8 @@ static int __init it87_find(unsigned short *address,
 		if (reg & (1 << 0))
 			sio_data->internal |= (1 << 0);
 		if ((reg & (1 << 1)) || sio_data->type == it8721 ||
-		    sio_data->type == it8728)
+		    sio_data->type == it8728 || sio_data->type == it8771 ||
+		    sio_data->type == it8772 )
 			sio_data->internal |= (1 << 1);
 
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
@@ -1905,6 +1925,8 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		"it8720",
 		"it8721",
 		"it8728",
+		"it8771",
+		"it8772",
 		"it8783",
 	};
 

@@ -58,6 +58,13 @@
 #include <linux/acpi.h>
 #include <linux/io.h>
 
+#ifndef kstrtol
+#define kstrtol strict_strtol
+#endif
+#ifndef kstrtoul
+#define kstrtoul strict_strtoul
+#endif
+
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8783 };
@@ -112,8 +119,10 @@ static inline int superio_enter(void)
 	/*
 	 * Try to reserve REG and REG + 1 for exclusive access.
 	 */
+#ifdef request_muxed_region
 	if (!request_muxed_region(REG, 2, DRVNAME))
 		return -EBUSY;
+#endif
 
 	outb(0x87, REG);
 	outb(0x01, REG);
@@ -126,7 +135,9 @@ static inline void superio_exit(void)
 {
 	outb(0x02, REG);
 	outb(0x02, VAL);
+#ifdef request_muxed_region
 	release_region(REG, 2);
+#endif
 }
 
 /* Logical device 4 registers */

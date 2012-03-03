@@ -1776,8 +1776,8 @@ static int __init it87_find(unsigned short *address,
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
 		if (sio_data->type == it8721 || sio_data->type == it8728) {
 			/*
-			 * The IT8721F/IT8758E/IT8783E/F don't have VID pins
-			 * at all, not sure about the IT8728F.
+			 * The IT8721F/IT8758E don't have VID pins at all,
+			 * not sure about the IT8728F.
 			 */
 			sio_data->skip_vid = 1;
 		} else {

@@ -21,6 +21,8 @@
  *            IT8758E  Super I/O chip w/LPC interface
  *            IT8771E  Super I/O chip w/LPC interface
  *            IT8772E  Super I/O chip w/LPC interface
+ *            IT8781F  Super I/O chip w/LPC interface
+ *            IT8782F  Super I/O chip w/LPC interface
  *            IT8783E/F Super I/O chip w/LPC interface
  *            Sis950   A clone of the IT8705F
  *
@@ -70,7 +72,7 @@
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8771,
-	     it8772, it8783 };
+	     it8772, it8781, it8782, it8783 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -154,6 +156,8 @@ static inline void superio_exit(void)
 #define IT8728F_DEVID 0x8728
 #define IT8771E_DEVID 0x8771
 #define IT8772E_DEVID 0x8772
+#define IT8781F_DEVID 0x8781
+#define IT8782F_DEVID 0x8782
 #define IT8783E_DEVID 0x8783
 #define IT87_ACT_REG  0x30
 #define IT87_BASE_REG 0x60
@@ -444,6 +448,8 @@ static inline int has_16bit_fans(const struct it87_data *data)
 	    || data->type == it8728
 	    || data->type == it8771
 	    || data->type == it8772
+	    || data->type == it8781
+	    || data->type == it8782
 	    || data->type == it8783;
 }
 
@@ -1694,6 +1700,12 @@ static int __init it87_find(unsigned short *address,
 	case IT8772E_DEVID:
 		sio_data->type = it8772;
 		break;
+	case IT8781F_DEVID:
+		sio_data->type = it8781;
+		break;
+	case IT8782F_DEVID:
+		sio_data->type = it8782;
+		break;
 	case IT8783E_DEVID:
 		sio_data->type = it8783;
 		break;
@@ -1732,7 +1744,8 @@ static int __init it87_find(unsigned short *address,
 		/* The IT8705F has a different LD number for GPIO */
 		superio_select(5);
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8783) {
+	} else if (sio_data->type == it8781 || sio_data->type == it8782 ||
+		   sio_data->type == it8783) {
 		int reg25, reg27, reg2A, reg2C, regEF;
 
 		sio_data->skip_vid = 1;	/* No VID */
@@ -1927,6 +1940,8 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		"it8728",
 		"it8771",
 		"it8772",
+		"it8781",
+		"it8782",
 		"it8783",
 	};
 
@@ -1972,7 +1987,8 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			data->in_scaled |= (1 << 7);	/* in7 is VSB */
 		if (sio_data->internal & (1 << 2))
 			data->in_scaled |= (1 << 8);	/* in8 is Vbat */
-	} else if (sio_data->type == it8783) {
+	} else if (sio_data->type == it8781 || sio_data->type == it8782 ||
+		   sio_data->type == it8783) {
 		if (sio_data->internal & (1 << 0))
 			data->in_scaled |= (1 << 3);	/* in3 is VCC5V */
 		if (sio_data->internal & (1 << 1))
@@ -2254,7 +2270,8 @@ static void __devinit it87_init_device(struct platform_device *pdev)
 					 tmp | 0x07);
 		}
 		/* IT8705F and IT8783E/F only support three fans. */
-		if (data->type != it87 && data->type != it8783) {
+		if (data->type != it87 && data->type != it8781
+		    && data->type != it8782 && data->type != it8783) {
 			if (tmp & (1 << 4))
 				data->has_fan |= (1 << 3); /* fan4 enabled */
 			if (tmp & (1 << 5))

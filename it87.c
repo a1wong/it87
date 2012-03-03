@@ -2253,8 +2253,8 @@ static void __devinit it87_init_device(struct platform_device *pdev)
 			it87_write_value(data, IT87_REG_FAN_16BIT,
 					 tmp | 0x07);
 		}
-		/* IT8705F only supports three fans. */
-		if (data->type != it87) {
+		/* IT8705F and IT8783E/F only support three fans. */
+		if (data->type != it87 && data->type != it8783) {
 			if (tmp & (1 << 4))
 				data->has_fan |= (1 << 3); /* fan4 enabled */
 			if (tmp & (1 << 5))

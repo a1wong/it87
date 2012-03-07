@@ -1780,17 +1780,8 @@ static int __init it87_find(unsigned short *address,
 			; /* No VIN6 */
 
 		/* VIN7 */
-		if ((reg27 & (1 << 2)) || (reg2C & (1 << 2))) {
-			/*
-			 * If the external VIN7 pin is disabled, route it to the
-			 * internal VCCH5V if that is not already done.
-			 */
-			if (!(reg2C & (1 << 1))) {
-				reg2C |= (1 << 1);
-				superio_outb(IT87_SIO_PINX2_REG, reg2C);
-				pr_notice("Routing internal VCCH to in7\n");
-			}
-		}
+		if ((reg27 & (1 << 2)) || (reg2C & (1 << 2)))
+			; /* No VIN7 */
 
 		if (reg2C & (1 << 0))
 			sio_data->internal |= (1 << 0);

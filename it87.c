@@ -1779,8 +1779,11 @@ static int __init it87_find(unsigned short *address,
 		if ((reg27 & (1 << 1)) || (reg2C & (1 << 2)))
 			; /* No VIN6 */
 
-		/* VIN7 */
-		if ((reg27 & (1 << 2)) || (reg2C & (1 << 2)))
+		/*
+		 * VIN7
+		 * Does not depend on bit 2 of Reg2C, contrary to datasheet.
+		 */
+		if (reg27 & (1 << 2))
 			; /* No VIN7 */
 
 		if (reg2C & (1 << 0))

@@ -19,6 +19,7 @@
  *            IT8726F  Super I/O chip w/LPC interface
  *            IT8728F  Super I/O chip w/LPC interface
  *            IT8758E  Super I/O chip w/LPC interface
+ *            IT8782F  Super I/O chip w/LPC interface
  *            IT8771E  Super I/O chip w/LPC interface
  *            IT8772E  Super I/O chip w/LPC interface
  *            IT8781F  Super I/O chip w/LPC interface
@@ -226,6 +227,7 @@ static const u8 IT87_REG_FANX_MIN[]	= { 0x1b, 0x1c, 0x1d, 0x85, 0x87 };
 
 #define IT87_REG_VIN_ENABLE    0x50
 #define IT87_REG_TEMP_ENABLE   0x51
+#define IT87_REG_TEMP_EXTRA    0x55
 #define IT87_REG_BEEP_ENABLE   0x5c
 
 #define IT87_REG_CHIPID        0x58
@@ -242,9 +244,11 @@ struct it87_sio_data {
 	u8 beep_pin;
 	u8 internal;	/* Internal sensors can be labeled */
 	/* Features skipped based on config or DMI */
+	u16 skip_in;
 	u8 skip_vid;
 	u8 skip_fan;
 	u8 skip_pwm;
+	u8 skip_temp;
 };
 
 /*
@@ -269,6 +273,7 @@ struct it87_data {
 	u8 has_fan;		/* Bitfield, fans enabled */
 	u16 fan[5];		/* Register values, possibly combined */
 	u16 fan_min[5];		/* Register values, possibly combined */
+	u8 has_temp;		/* Bitfield, temp sensors enabled */
 	s8 temp[3];		/* Register value */
 	s8 temp_high[3];	/* Register value */
 	s8 temp_low[3];		/* Register value */
@@ -325,39 +330,23 @@ static inline int has_newer_autopwm(const struct it87_data *data)
 	    || data->type == it8772;
 }
 
+static int adc_lsb(const struct it87_data *data, int nr)
+{
+	int lsb = has_12mv_adc(data) ? 12 : 16;
+	if (data->in_scaled & (1 << nr))
+		lsb <<= 1;
+	return lsb;
+}
+
 static u8 in_to_reg(const struct it87_data *data, int nr, long val)
 {
-	long lsb;
-
-	if (has_12mv_adc(data)) {
-		if (data->in_scaled & (1 << nr))
-			lsb = 24;
-		else
-			lsb = 12;
-	} else {
-		if (data->in_scaled & (1 << nr))
-			lsb = 32;
-		else
-			lsb = 16;
-	}
-
-	val = DIV_ROUND_CLOSEST(val, lsb);
+	val = DIV_ROUND_CLOSEST(val, adc_lsb(data, nr));
 	return SENSORS_LIMIT(val, 0, 255);
 }
 
 static int in_from_reg(const struct it87_data *data, int nr, int val)
 {
-	if (has_12mv_adc(data)) {
-		if (data->in_scaled & (1 << nr))
-			return val * 24;
-		else
-			return val * 12;
-	} else {
-		if (data->in_scaled & (1 << nr))
-			return val * 32;
-		else
-			return val * 16;
-	}
+	return val * adc_lsb(data, nr);
 }
 
 static inline u8 FAN_TO_REG(long rpm, int div)
@@ -1403,57 +1392,103 @@ static ssize_t show_name(struct device *dev, struct device_attribute
 }
 static DEVICE_ATTR(name, S_IRUGO, show_name, NULL);
 
-static struct attribute *it87_attributes[] = {
+static struct attribute *it87_attributes_in[9][5] = {
+{
 	&sensor_dev_attr_in0_input.dev_attr.attr,
-	&sensor_dev_attr_in1_input.dev_attr.attr,
-	&sensor_dev_attr_in2_input.dev_attr.attr,
-	&sensor_dev_attr_in3_input.dev_attr.attr,
-	&sensor_dev_attr_in4_input.dev_attr.attr,
-	&sensor_dev_attr_in5_input.dev_attr.attr,
-	&sensor_dev_attr_in6_input.dev_attr.attr,
-	&sensor_dev_attr_in7_input.dev_attr.attr,
-	&sensor_dev_attr_in8_input.dev_attr.attr,
 	&sensor_dev_attr_in0_min.dev_attr.attr,
-	&sensor_dev_attr_in1_min.dev_attr.attr,
-	&sensor_dev_attr_in2_min.dev_attr.attr,
-	&sensor_dev_attr_in3_min.dev_attr.attr,
-	&sensor_dev_attr_in4_min.dev_attr.attr,
-	&sensor_dev_attr_in5_min.dev_attr.attr,
-	&sensor_dev_attr_in6_min.dev_attr.attr,
-	&sensor_dev_attr_in7_min.dev_attr.attr,
 	&sensor_dev_attr_in0_max.dev_attr.attr,
-	&sensor_dev_attr_in1_max.dev_attr.attr,
-	&sensor_dev_attr_in2_max.dev_attr.attr,
-	&sensor_dev_attr_in3_max.dev_attr.attr,
-	&sensor_dev_attr_in4_max.dev_attr.attr,
-	&sensor_dev_attr_in5_max.dev_attr.attr,
-	&sensor_dev_attr_in6_max.dev_attr.attr,
-	&sensor_dev_attr_in7_max.dev_attr.attr,
 	&sensor_dev_attr_in0_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in1_input.dev_attr.attr,
+	&sensor_dev_attr_in1_min.dev_attr.attr,
+	&sensor_dev_attr_in1_max.dev_attr.attr,
 	&sensor_dev_attr_in1_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in2_input.dev_attr.attr,
+	&sensor_dev_attr_in2_min.dev_attr.attr,
+	&sensor_dev_attr_in2_max.dev_attr.attr,
 	&sensor_dev_attr_in2_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in3_input.dev_attr.attr,
+	&sensor_dev_attr_in3_min.dev_attr.attr,
+	&sensor_dev_attr_in3_max.dev_attr.attr,
 	&sensor_dev_attr_in3_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in4_input.dev_attr.attr,
+	&sensor_dev_attr_in4_min.dev_attr.attr,
+	&sensor_dev_attr_in4_max.dev_attr.attr,
 	&sensor_dev_attr_in4_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in5_input.dev_attr.attr,
+	&sensor_dev_attr_in5_min.dev_attr.attr,
+	&sensor_dev_attr_in5_max.dev_attr.attr,
 	&sensor_dev_attr_in5_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in6_input.dev_attr.attr,
+	&sensor_dev_attr_in6_min.dev_attr.attr,
+	&sensor_dev_attr_in6_max.dev_attr.attr,
 	&sensor_dev_attr_in6_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in7_input.dev_attr.attr,
+	&sensor_dev_attr_in7_min.dev_attr.attr,
+	&sensor_dev_attr_in7_max.dev_attr.attr,
 	&sensor_dev_attr_in7_alarm.dev_attr.attr,
+	NULL
+}, {
+	&sensor_dev_attr_in8_input.dev_attr.attr,
+	NULL
+} };
 
+static const struct attribute_group it87_group_in[9] = {
+	{ .attrs = it87_attributes_in[0] },
+	{ .attrs = it87_attributes_in[1] },
+	{ .attrs = it87_attributes_in[2] },
+	{ .attrs = it87_attributes_in[3] },
+	{ .attrs = it87_attributes_in[4] },
+	{ .attrs = it87_attributes_in[5] },
+	{ .attrs = it87_attributes_in[6] },
+	{ .attrs = it87_attributes_in[7] },
+	{ .attrs = it87_attributes_in[8] },
+};
+
+static struct attribute *it87_attributes_temp[3][6] = {
+{
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
-	&sensor_dev_attr_temp2_input.dev_attr.attr,
-	&sensor_dev_attr_temp3_input.dev_attr.attr,
 	&sensor_dev_attr_temp1_max.dev_attr.attr,
-	&sensor_dev_attr_temp2_max.dev_attr.attr,
-	&sensor_dev_attr_temp3_max.dev_attr.attr,
 	&sensor_dev_attr_temp1_min.dev_attr.attr,
-	&sensor_dev_attr_temp2_min.dev_attr.attr,
-	&sensor_dev_attr_temp3_min.dev_attr.attr,
 	&sensor_dev_attr_temp1_type.dev_attr.attr,
-	&sensor_dev_attr_temp2_type.dev_attr.attr,
-	&sensor_dev_attr_temp3_type.dev_attr.attr,
 	&sensor_dev_attr_temp1_alarm.dev_attr.attr,
+	NULL
+} , {
+	&sensor_dev_attr_temp2_input.dev_attr.attr,
+	&sensor_dev_attr_temp2_max.dev_attr.attr,
+	&sensor_dev_attr_temp2_min.dev_attr.attr,
+	&sensor_dev_attr_temp2_type.dev_attr.attr,
 	&sensor_dev_attr_temp2_alarm.dev_attr.attr,
+	NULL
+} , {
+	&sensor_dev_attr_temp3_input.dev_attr.attr,
+	&sensor_dev_attr_temp3_max.dev_attr.attr,
+	&sensor_dev_attr_temp3_min.dev_attr.attr,
+	&sensor_dev_attr_temp3_type.dev_attr.attr,
 	&sensor_dev_attr_temp3_alarm.dev_attr.attr,
+	NULL
+} };
 
+static const struct attribute_group it87_group_temp[3] = {
+	{ .attrs = it87_attributes_temp[0] },
+	{ .attrs = it87_attributes_temp[1] },
+	{ .attrs = it87_attributes_temp[2] },
+};
+
+static struct attribute *it87_attributes[] = {
 	&dev_attr_alarms.attr,
 	&sensor_dev_attr_intrusion0_alarm.dev_attr.attr,
 	&dev_attr_name.attr,
@@ -1464,7 +1499,7 @@ static const struct attribute_group it87_group = {
 	.attrs = it87_attributes,
 };
 
-static struct attribute *it87_attributes_beep[] = {
+static struct attribute *it87_attributes_in_beep[] = {
 	&sensor_dev_attr_in0_beep.dev_attr.attr,
 	&sensor_dev_attr_in1_beep.dev_attr.attr,
 	&sensor_dev_attr_in2_beep.dev_attr.attr,
@@ -1473,15 +1508,13 @@ static struct attribute *it87_attributes_beep[] = {
 	&sensor_dev_attr_in5_beep.dev_attr.attr,
 	&sensor_dev_attr_in6_beep.dev_attr.attr,
 	&sensor_dev_attr_in7_beep.dev_attr.attr,
-
-	&sensor_dev_attr_temp1_beep.dev_attr.attr,
-	&sensor_dev_attr_temp2_beep.dev_attr.attr,
-	&sensor_dev_attr_temp3_beep.dev_attr.attr,
 	NULL
 };
 
-static const struct attribute_group it87_group_beep = {
-	.attrs = it87_attributes_beep,
+static struct attribute *it87_attributes_temp_beep[] = {
+	&sensor_dev_attr_temp1_beep.dev_attr.attr,
+	&sensor_dev_attr_temp2_beep.dev_attr.attr,
+	&sensor_dev_attr_temp3_beep.dev_attr.attr,
 };
 
 static struct attribute *it87_attributes_fan16[5][3+1] = { {
@@ -1735,9 +1768,9 @@ static int __init it87_find(unsigned short *address,
 		/* The IT8705F has a different LD number for GPIO */
 		superio_select(5);
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8781 || sio_data->type == it8782 ||
-		   sio_data->type == it8783) {
+	} else if (sio_data->type == it8783) {
 		int reg25, reg27, reg2A, reg2C, regEF;
+		bool uart6;
 
 		sio_data->skip_vid = 1;	/* No VID */
 
@@ -1749,8 +1782,10 @@ static int __init it87_find(unsigned short *address,
 		reg2C = superio_inb(IT87_SIO_PINX2_REG);
 		regEF = superio_inb(IT87_SIO_SPI_REG);
 
+		uart6 = reg2C & (1 << 2);
+
 		/* Check if fan3 is there or not */
-		if ((reg27 & (1 << 0)) || !(reg2C & (1 << 2)))
+		if ((reg27 & (1 << 0)) || !uart6)
 			sio_data->skip_fan |= (1 << 2);
 		if ((reg25 & (1 << 4))
 		    || (!(reg2A & (1 << 1)) && (regEF & (1 << 0))))
@@ -1763,19 +1798,40 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_pwm |= (1 << 1);
 
 		/* VIN5 */
-		if ((reg27 & (1 << 0)) || (reg2C & (1 << 2)))
-			; /* No VIN5 */
+		if ((reg27 & (1 << 0)) || uart6)
+			sio_data->skip_in |= (1 << 5); /* No VIN5 */
 
 		/* VIN6 */
-		if ((reg27 & (1 << 1)) || (reg2C & (1 << 2)))
-			; /* No VIN6 */
+		if ((reg27 & (1 << 1)) || uart6)
+			sio_data->skip_in |= (1 << 6); /* No VIN6 */
 
 		/*
 		 * VIN7
 		 * Does not depend on bit 2 of Reg2C, contrary to datasheet.
 		 */
-		if (reg27 & (1 << 2))
-			; /* No VIN7 */
+		if (reg27 & (1 << 2)) {
+			/*
+			 * The data sheet is a bit uncear regarding the internal
+			 * voltage divider for VCCH5V. It says
+			 * "This bit enables and switches VIN7 (pin91) to the
+			 * internal voltage divider for VCCH5V".
+			 * This is different to other chips, where the internal
+			 * voltage divider would connect VIN7 to an internal
+			 * voltage source. Maybe that is the case here as well,
+			 * but at least for now follow the data sheet and assume
+			 * that there is no VIN7 if pin 91 is not configured as
+			 * VIN7 input.
+			 */
+			sio_data->skip_in |= (1 << 7);
+		}
+
+		/*
+		 * No temp3 if UART6 is enabled and the temp3 source is TEMPIN3.
+		 * We can not read the temp3 source here, so skip_temp is
+		 * preliminary.
+		 */
+		if (uart6)
+			sio_data->skip_temp |= (1 << 2);
 
 		if (reg2C & (1 << 0))
 			sio_data->internal |= (1 << 0);
@@ -1786,15 +1842,17 @@ static int __init it87_find(unsigned short *address,
 
 	} else {
 		int reg;
+		bool uart6;
 
 		superio_select(GPIO);
 
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
-		if (sio_data->type == it8721 || sio_data->type == it8728
-		    || sio_data->type == it8771 || sio_data->type == it8772) {
+		if (sio_data->type == it8721 || sio_data->type == it8728 ||
+		    sio_data->type == it8771 || sio_data->type == it8772 ||
+		    sio_data->type == it8781 || sio_data->type == it8782) {
 			/*
-			 * The IT8721F/IT8758E don't have VID pins at all,
-			 * not sure about the IT8728F, IT8771E, IT8772E.
+			 * IT8721F, IT8758E, and IT8782F don't have VID pins
+			 * at all, not sure about the IT8728F.
 			 */
 			sio_data->skip_vid = 1;
 		} else {
@@ -1823,6 +1881,9 @@ static int __init it87_find(unsigned short *address,
 			sio_data->vid_value = superio_inb(IT87_SIO_VID_REG);
 
 		reg = superio_inb(IT87_SIO_PINX2_REG);
+
+		uart6 = sio_data->type == it8782 && (reg & (1 << 2));
+
 		/*
 		 * The IT8720F has no VIN7 pin, so VCCH should always be
 		 * routed internally to VIN7 with an internal divider.
@@ -1832,8 +1893,11 @@ static int __init it87_find(unsigned short *address,
 		 * configured, even though the IT8720F datasheet claims
 		 * that the internal routing of VCCH to VIN7 is the default
 		 * setting. So we force the internal routing in this case.
+		 *
+		 * On IT8782F, VIN7 is multiplexed with one of the UART6 pins.
+		 * If UART6 is enabled, re-route VIN7 to the internal divider.
 		 */
-		if (sio_data->type == it8720 && !(reg & (1 << 1))) {
+		if ((sio_data->type == it8720 && !(reg & (1 << 1))) || uart6) {
 			reg |= (1 << 1);
 			superio_outb(IT87_SIO_PINX2_REG, reg);
 			pr_notice("Routing internal VCCH to in7\n");
@@ -1844,6 +1908,20 @@ static int __init it87_find(unsigned short *address,
 		    sio_data->type == it8728 || sio_data->type == it8771 ||
 		    sio_data->type == it8772 )
 			sio_data->internal |= (1 << 1);
+
+		/*
+		 * On IT8782F, UART6 pins overlap with VIN5, VIN6, and VIN7.
+		 * While VIN7 can be routed to the internal voltage divider,
+		 * VIN5 and VIN6 are not available if UART6 is enabled.
+		 *
+		 * Also, temp3 is not available if UART6 is enabled and TEMPIN3
+		 * is the temperature source. Since we can not read the
+		 * temperature source here, skip_temp is preliminary.
+		 */
+		if (uart6) {
+			sio_data->skip_in |= (1 << 5) | (1 << 6);
+			sio_data->skip_temp |= (1 << 2);
+		}
 
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	}
@@ -1882,8 +1960,17 @@ static void it87_remove_files(struct device *dev)
 	int i;
 
 	sysfs_remove_group(&dev->kobj, &it87_group);
-	if (sio_data->beep_pin)
-		sysfs_remove_group(&dev->kobj, &it87_group_beep);
+	for (i = 0; i < 9; i++) {
+		sysfs_remove_group(&dev->kobj, &it87_group_in[i]);
+		if (it87_attributes_in_beep[i])
+			sysfs_remove_file(&dev->kobj,
+					  it87_attributes_in_beep[i]);
+	}
+	for (i = 0; i < 3; i++) {
+		sysfs_remove_group(&dev->kobj, &it87_group_temp[i]);
+		sysfs_remove_file(&dev->kobj,
+				  it87_attributes_temp_beep[i]);
+	}
 	for (i = 0; i < 5; i++) {
 		if (!(data->has_fan & (1 << i)))
 			continue;
@@ -1939,7 +2026,7 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		goto ERROR0;
 	}
 
-	data = kzalloc(sizeof(struct it87_data), GFP_KERNEL);
+	data = devm_kzalloc(&pdev->dev, sizeof(struct it87_data), GFP_KERNEL);
 	if (!data) {
 		err = -ENOMEM;
 		goto ERROR1;
@@ -1954,7 +2041,7 @@ static int __devinit it87_probe(struct platform_device *pdev)
 	if ((it87_read_value(data, IT87_REG_CONFIG) & 0x80)
 	 || it87_read_value(data, IT87_REG_CHIPID) != 0x90) {
 		err = -ENODEV;
-		goto ERROR2;
+		goto ERROR1;
 	}
 
 	platform_set_drvdata(pdev, data);
@@ -1980,19 +2067,46 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			data->in_scaled |= (1 << 7);	/* in7 is VCCH5V */
 	}
 
+	data->has_temp = 0x07;
+	if (sio_data->skip_temp &&
+	    !(it87_read_value(data, IT87_REG_TEMP_EXTRA) & 0x80))
+		data->has_temp &= ~sio_data->skip_temp;
+
 	/* Initialize the IT87 chip */
 	it87_init_device(pdev);
 
 	/* Register sysfs hooks */
-	err = sysfs_create_group(&dev->kobj, &it87_group);
-	if (err)
-		goto ERROR2;
-
-	if (sio_data->beep_pin) {
-		err = sysfs_create_group(&dev->kobj, &it87_group_beep);
+	for (i = 0; i < 9; i++) {
+		if (sio_data->skip_in & (1 << i))
+			continue;
+		err = sysfs_create_group(&dev->kobj, &it87_group_in[i]);
 		if (err)
 			goto ERROR4;
+		if (sio_data->beep_pin && it87_attributes_in_beep[i]) {
+			err = sysfs_create_file(&dev->kobj,
+						it87_attributes_in_beep[i]);
+			if (err)
+				goto ERROR4;
+		}
 	}
+
+	for (i = 0; i < 3; i++) {
+		if (!(data->has_temp & (1 << i)))
+			continue;
+		err = sysfs_create_group(&dev->kobj, &it87_group_temp[i]);
+		if (err)
+			goto ERROR4;
+		if (sio_data->beep_pin) {
+			err = sysfs_create_file(&dev->kobj,
+						it87_attributes_temp_beep[i]);
+			if (err)
+				goto ERROR4;
+		}
+	}
+
+	err = sysfs_create_group(&dev->kobj, &it87_group);
+	if (err)
+		goto ERROR4;
 
 	/* Do not create fan files for disabled fans */
 	fan_group = it87_get_fan_group(data);
@@ -2073,9 +2187,6 @@ static int __devinit it87_probe(struct platform_device *pdev)
 
 ERROR4:
 	it87_remove_files(dev);
-ERROR2:
-	platform_set_drvdata(pdev, NULL);
-	kfree(data);
 ERROR1:
 	release_region(res->start, IT87_EC_EXTENT);
 ERROR0:
@@ -2090,9 +2201,6 @@ static int __devexit it87_remove(struct platform_device *pdev)
 	it87_remove_files(&pdev->dev);
 
 	release_region(data->addr, IT87_EC_EXTENT);
-	platform_set_drvdata(pdev, NULL);
-	kfree(data);
-
 	return 0;
 }
 
@@ -2254,8 +2362,9 @@ static void __devinit it87_init_device(struct platform_device *pdev)
 			it87_write_value(data, IT87_REG_FAN_16BIT,
 					 tmp | 0x07);
 		}
-		/* IT8705F and IT8783E/F only support three fans. */
-		if (data->type != it87 && data->type != it8783) {
+		/* IT8705F, IT8782F, and IT8783E/F only support three fans. */
+		if (data->type != it87 && data->type != it8781 &&
+		    data->type != it8782 && data->type != it8783) {
 			if (tmp & (1 << 4))
 				data->has_fan |= (1 << 3); /* fan4 enabled */
 			if (tmp & (1 << 5))
@@ -2344,6 +2453,8 @@ static struct it87_data *it87_update_device(struct device *dev)
 			}
 		}
 		for (i = 0; i < 3; i++) {
+			if (!(data->has_temp & (1 << i)))
+				continue;
 			data->temp[i] =
 				it87_read_value(data, IT87_REG_TEMP(i));
 			data->temp_high[i] =

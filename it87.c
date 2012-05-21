@@ -20,10 +20,6 @@
  *            IT8728F  Super I/O chip w/LPC interface
  *            IT8758E  Super I/O chip w/LPC interface
  *            IT8782F  Super I/O chip w/LPC interface
- *            IT8771E  Super I/O chip w/LPC interface
- *            IT8772E  Super I/O chip w/LPC interface
- *            IT8781F  Super I/O chip w/LPC interface
- *            IT8782F  Super I/O chip w/LPC interface
  *            IT8783E/F Super I/O chip w/LPC interface
  *            Sis950   A clone of the IT8705F
  *
@@ -62,13 +58,45 @@
 #include <linux/dmi.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
+#include <linux/version.h>
 
-#include "compat.h"
+#ifndef request_muxed_region
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 28)
+#define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name))
+#else
+#define IORESOURCE_MUXED	0x00400000
+#define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name), IORESOURCE_MUXED)
+#endif
+#endif
+
+/* Red Hat EL5 includes backports of these functions, so we can't redefine
+ * our own. */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 24)
+#if !(defined RHEL_MAJOR && RHEL_MAJOR == 5 && RHEL_MINOR >= 5)
+static inline int strict_strtoul(const char *cp, unsigned int base,
+                                 unsigned long *res)
+{
+	*res = simple_strtoul(cp, NULL, base);
+	return 0;
+}
+
+static inline int strict_strtol(const char *cp, unsigned int base, long *res)
+{
+	*res = simple_strtol(cp, NULL, base);
+	return 0;
+}
+#endif
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
+#define kstrtoul strict_strtoul
+#define kstrtol strict_strtol
+#endif
 
 #define DRVNAME "it87"
 
-enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8771,
-	     it8772, it8781, it8782, it8783 };
+enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8782,
+	     it8783 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -146,9 +174,6 @@ static inline void superio_exit(void)
 #define IT8721F_DEVID 0x8721
 #define IT8726F_DEVID 0x8726
 #define IT8728F_DEVID 0x8728
-#define IT8771E_DEVID 0x8771
-#define IT8772E_DEVID 0x8772
-#define IT8781F_DEVID 0x8781
 #define IT8782F_DEVID 0x8782
 #define IT8783E_DEVID 0x8783
 #define IT87_ACT_REG  0x30
@@ -312,9 +337,7 @@ static inline int has_12mv_adc(const struct it87_data *data)
 	 * on selected inputs.
 	 */
 	return data->type == it8721
-	    || data->type == it8728
-	    || data->type == it8771
-	    || data->type == it8772;
+	    || data->type == it8728;
 }
 
 static inline int has_newer_autopwm(const struct it87_data *data)
@@ -322,12 +345,9 @@ static inline int has_newer_autopwm(const struct it87_data *data)
 	/*
 	 * IT8721F and later have separate registers for the temperature
 	 * mapping and the manual duty cycle.
-	 * [ Assume that also applies to IT8771 / IT8772 ]
 	 */
 	return data->type == it8721
-	    || data->type == it8728
-	    || data->type == it8771
-	    || data->type == it8772;
+	    || data->type == it8728;
 }
 
 static int adc_lsb(const struct it87_data *data, int nr)
@@ -426,9 +446,6 @@ static inline int has_16bit_fans(const struct it87_data *data)
 	    || data->type == it8720
 	    || data->type == it8721
 	    || data->type == it8728
-	    || data->type == it8771
-	    || data->type == it8772
-	    || data->type == it8781
 	    || data->type == it8782
 	    || data->type == it8783;
 }
@@ -1718,15 +1735,6 @@ static int __init it87_find(unsigned short *address,
 	case IT8728F_DEVID:
 		sio_data->type = it8728;
 		break;
-	case IT8771E_DEVID:
-		sio_data->type = it8771;
-		break;
-	case IT8772E_DEVID:
-		sio_data->type = it8772;
-		break;
-	case IT8781F_DEVID:
-		sio_data->type = it8781;
-		break;
 	case IT8782F_DEVID:
 		sio_data->type = it8782;
 		break;
@@ -1770,7 +1778,6 @@ static int __init it87_find(unsigned short *address,
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else if (sio_data->type == it8783) {
 		int reg25, reg27, reg2A, reg2C, regEF;
-		bool uart6;
 
 		sio_data->skip_vid = 1;	/* No VID */
 
@@ -1782,10 +1789,8 @@ static int __init it87_find(unsigned short *address,
 		reg2C = superio_inb(IT87_SIO_PINX2_REG);
 		regEF = superio_inb(IT87_SIO_SPI_REG);
 
-		uart6 = reg2C & (1 << 2);
-
 		/* Check if fan3 is there or not */
-		if ((reg27 & (1 << 0)) || !uart6)
+		if ((reg27 & (1 << 0)) || !(reg2C & (1 << 2)))
 			sio_data->skip_fan |= (1 << 2);
 		if ((reg25 & (1 << 4))
 		    || (!(reg2A & (1 << 1)) && (regEF & (1 << 0))))
@@ -1798,11 +1803,11 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_pwm |= (1 << 1);
 
 		/* VIN5 */
-		if ((reg27 & (1 << 0)) || uart6)
+		if ((reg27 & (1 << 0)) || (reg2C & (1 << 2)))
 			sio_data->skip_in |= (1 << 5); /* No VIN5 */
 
 		/* VIN6 */
-		if ((reg27 & (1 << 1)) || uart6)
+		if (reg27 & (1 << 1))
 			sio_data->skip_in |= (1 << 6); /* No VIN6 */
 
 		/*
@@ -1811,27 +1816,26 @@ static int __init it87_find(unsigned short *address,
 		 */
 		if (reg27 & (1 << 2)) {
 			/*
-			 * The data sheet is a bit uncear regarding the internal
-			 * voltage divider for VCCH5V. It says
-			 * "This bit enables and switches VIN7 (pin91) to the
+			 * The data sheet is a bit unclear regarding the
+			 * internal voltage divider for VCCH5V. It says
+			 * "This bit enables and switches VIN7 (pin 91) to the
 			 * internal voltage divider for VCCH5V".
 			 * This is different to other chips, where the internal
 			 * voltage divider would connect VIN7 to an internal
-			 * voltage source. Maybe that is the case here as well,
-			 * but at least for now follow the data sheet and assume
-			 * that there is no VIN7 if pin 91 is not configured as
-			 * VIN7 input.
+			 * voltage source. Maybe that is the case here as well.
+			 *
+			 * Since we don't know for sure, re-route it if that is
+			 * not the case, and ask the user to report if the
+			 * resulting voltage is sane.
 			 */
-			sio_data->skip_in |= (1 << 7);
+			if (!(reg2C & (1 << 1))) {
+				reg2C |= (1 << 1);
+				superio_outb(IT87_SIO_PINX2_REG, reg2C);
+				pr_notice("Routing internal VCCH5V to in7.\n");
+			}
+			pr_notice("in7 routed to internal voltage divider, with external pin disabled.\n");
+			pr_notice("Please report if it displays a reasonable voltage.\n");
 		}
-
-		/*
-		 * No temp3 if UART6 is enabled and the temp3 source is TEMPIN3.
-		 * We can not read the temp3 source here, so skip_temp is
-		 * preliminary.
-		 */
-		if (uart6)
-			sio_data->skip_temp |= (1 << 2);
 
 		if (reg2C & (1 << 0))
 			sio_data->internal |= (1 << 0);
@@ -1848,10 +1852,9 @@ static int __init it87_find(unsigned short *address,
 
 		reg = superio_inb(IT87_SIO_GPIO3_REG);
 		if (sio_data->type == it8721 || sio_data->type == it8728 ||
-		    sio_data->type == it8771 || sio_data->type == it8772 ||
-		    sio_data->type == it8781 || sio_data->type == it8782) {
+		    sio_data->type == it8782) {
 			/*
-			 * IT8721F, IT8758E, and IT8782F don't have VID pins
+			 * IT8721F/IT8758E, and IT8782F don't have VID pins
 			 * at all, not sure about the IT8728F.
 			 */
 			sio_data->skip_vid = 1;
@@ -1895,9 +1898,10 @@ static int __init it87_find(unsigned short *address,
 		 * setting. So we force the internal routing in this case.
 		 *
 		 * On IT8782F, VIN7 is multiplexed with one of the UART6 pins.
-		 * If UART6 is enabled, re-route VIN7 to the internal divider.
+		 * If UART6 is enabled, re-route VIN7 to the internal divider
+		 * if that is not already the case.
 		 */
-		if ((sio_data->type == it8720 && !(reg & (1 << 1))) || uart6) {
+		if ((sio_data->type == it8720 || uart6) && !(reg & (1 << 1))) {
 			reg |= (1 << 1);
 			superio_outb(IT87_SIO_PINX2_REG, reg);
 			pr_notice("Routing internal VCCH to in7\n");
@@ -1905,8 +1909,7 @@ static int __init it87_find(unsigned short *address,
 		if (reg & (1 << 0))
 			sio_data->internal |= (1 << 0);
 		if ((reg & (1 << 1)) || sio_data->type == it8721 ||
-		    sio_data->type == it8728 || sio_data->type == it8771 ||
-		    sio_data->type == it8772 )
+		    sio_data->type == it8728)
 			sio_data->internal |= (1 << 1);
 
 		/*
@@ -1961,15 +1964,20 @@ static void it87_remove_files(struct device *dev)
 
 	sysfs_remove_group(&dev->kobj, &it87_group);
 	for (i = 0; i < 9; i++) {
+		if (sio_data->skip_in & (1 << i))
+			continue;
 		sysfs_remove_group(&dev->kobj, &it87_group_in[i]);
 		if (it87_attributes_in_beep[i])
 			sysfs_remove_file(&dev->kobj,
 					  it87_attributes_in_beep[i]);
 	}
 	for (i = 0; i < 3; i++) {
+		if (!(data->has_temp & (1 << i)))
+			continue;
 		sysfs_remove_group(&dev->kobj, &it87_group_temp[i]);
-		sysfs_remove_file(&dev->kobj,
-				  it87_attributes_temp_beep[i]);
+		if (sio_data->beep_pin)
+			sysfs_remove_file(&dev->kobj,
+					  it87_attributes_temp_beep[i]);
 	}
 	for (i = 0; i < 5; i++) {
 		if (!(data->has_fan & (1 << i)))
@@ -2010,27 +2018,22 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		"it8720",
 		"it8721",
 		"it8728",
-		"it8771",
-		"it8772",
-		"it8781",
 		"it8782",
 		"it8783",
 	};
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-	if (!request_region(res->start, IT87_EC_EXTENT, DRVNAME)) {
+	if (!devm_request_region(&pdev->dev, res->start, IT87_EC_EXTENT,
+				 DRVNAME)) {
 		dev_err(dev, "Failed to request region 0x%lx-0x%lx\n",
 			(unsigned long)res->start,
 			(unsigned long)(res->start + IT87_EC_EXTENT - 1));
-		err = -EBUSY;
-		goto ERROR0;
+		return -EBUSY;
 	}
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct it87_data), GFP_KERNEL);
-	if (!data) {
-		err = -ENOMEM;
-		goto ERROR1;
-	}
+	if (!data)
+		return -ENOMEM;
 
 	data->addr = res->start;
 	data->type = sio_data->type;
@@ -2039,10 +2042,8 @@ static int __devinit it87_probe(struct platform_device *pdev)
 
 	/* Now, we do the remaining detection. */
 	if ((it87_read_value(data, IT87_REG_CONFIG) & 0x80)
-	 || it87_read_value(data, IT87_REG_CHIPID) != 0x90) {
-		err = -ENODEV;
-		goto ERROR1;
-	}
+	 || it87_read_value(data, IT87_REG_CHIPID) != 0x90)
+		return -ENODEV;
 
 	platform_set_drvdata(pdev, data);
 
@@ -2059,8 +2060,7 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			data->in_scaled |= (1 << 7);	/* in7 is VSB */
 		if (sio_data->internal & (1 << 2))
 			data->in_scaled |= (1 << 8);	/* in8 is Vbat */
-	} else if (sio_data->type == it8781 || sio_data->type == it8782 ||
-		   sio_data->type == it8783) {
+	} else if (sio_data->type == it8782 || sio_data->type == it8783) {
 		if (sio_data->internal & (1 << 0))
 			data->in_scaled |= (1 << 3);	/* in3 is VCC5V */
 		if (sio_data->internal & (1 << 1))
@@ -2068,14 +2068,20 @@ static int __devinit it87_probe(struct platform_device *pdev)
 	}
 
 	data->has_temp = 0x07;
-	if (sio_data->skip_temp &&
-	    !(it87_read_value(data, IT87_REG_TEMP_EXTRA) & 0x80))
-		data->has_temp &= ~sio_data->skip_temp;
+	if (sio_data->skip_temp & (1 << 2)) {
+		if (sio_data->type == it8782
+		    && !(it87_read_value(data, IT87_REG_TEMP_EXTRA) & 0x80))
+			data->has_temp &= ~(1 << 2);
+	}
 
 	/* Initialize the IT87 chip */
 	it87_init_device(pdev);
 
 	/* Register sysfs hooks */
+	err = sysfs_create_group(&dev->kobj, &it87_group);
+	if (err)
+		return err;
+
 	for (i = 0; i < 9; i++) {
 		if (sio_data->skip_in & (1 << i))
 			continue;
@@ -2103,10 +2109,6 @@ static int __devinit it87_probe(struct platform_device *pdev)
 				goto ERROR4;
 		}
 	}
-
-	err = sysfs_create_group(&dev->kobj, &it87_group);
-	if (err)
-		goto ERROR4;
 
 	/* Do not create fan files for disabled fans */
 	fan_group = it87_get_fan_group(data);
@@ -2187,9 +2189,6 @@ static int __devinit it87_probe(struct platform_device *pdev)
 
 ERROR4:
 	it87_remove_files(dev);
-ERROR1:
-	release_region(res->start, IT87_EC_EXTENT);
-ERROR0:
 	return err;
 }
 
@@ -2200,7 +2199,6 @@ static int __devexit it87_remove(struct platform_device *pdev)
 	hwmon_device_unregister(data->hwmon_dev);
 	it87_remove_files(&pdev->dev);
 
-	release_region(data->addr, IT87_EC_EXTENT);
 	return 0;
 }
 
@@ -2363,8 +2361,8 @@ static void __devinit it87_init_device(struct platform_device *pdev)
 					 tmp | 0x07);
 		}
 		/* IT8705F, IT8782F, and IT8783E/F only support three fans. */
-		if (data->type != it87 && data->type != it8781 &&
-		    data->type != it8782 && data->type != it8783) {
+		if (data->type != it87 && data->type != it8782 &&
+		    data->type != it8783) {
 			if (tmp & (1 << 4))
 				data->has_fan |= (1 << 3); /* fan4 enabled */
 			if (tmp & (1 << 5))

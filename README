@@ -30,18 +30,6 @@ Supported chips:
     Prefix: 'it8728'
     Addresses scanned: from Super I/O config space (8 I/O ports)
     Datasheet: Not publicly available
-  * IT8771E
-    Prefix: 'it8771'
-    Addresses scanned: from Super I/O config space (8 I/O ports)
-    Datasheet: Not publicly available
-  * IT8772E
-    Prefix: 'it8772'
-    Addresses scanned: from Super I/O config space (8 I/O ports)
-    Datasheet: Not publicly available
-  * IT8781F
-    Prefix: 'it8781'
-    Addresses scanned: from Super I/O config space (8 I/O ports)
-    Datasheet: Not publicly available
   * IT8782F
     Prefix: 'it8782'
     Addresses scanned: from Super I/O config space (8 I/O ports)

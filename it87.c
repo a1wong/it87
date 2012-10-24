@@ -59,39 +59,7 @@
 #include <linux/acpi.h>
 #include <linux/io.h>
 #include <linux/version.h>
-
-#ifndef request_muxed_region
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 28)
-#define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name))
-#else
-#define IORESOURCE_MUXED	0x00400000
-#define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name), IORESOURCE_MUXED)
-#endif
-#endif
-
-/* Red Hat EL5 includes backports of these functions, so we can't redefine
- * our own. */
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 24)
-#if !(defined RHEL_MAJOR && RHEL_MAJOR == 5 && RHEL_MINOR >= 5)
-static inline int strict_strtoul(const char *cp, unsigned int base,
-                                 unsigned long *res)
-{
-	*res = simple_strtoul(cp, NULL, base);
-	return 0;
-}
-
-static inline int strict_strtol(const char *cp, unsigned int base, long *res)
-{
-	*res = simple_strtol(cp, NULL, base);
-	return 0;
-}
-#endif
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
-#define kstrtoul strict_strtoul
-#define kstrtol strict_strtol
-#endif
+#include "compat.h"
 
 #define DRVNAME "it87"
 
@@ -2087,12 +2055,12 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			continue;
 		err = sysfs_create_group(&dev->kobj, &it87_group_in[i]);
 		if (err)
-			goto ERROR4;
+			goto error;
 		if (sio_data->beep_pin && it87_attributes_in_beep[i]) {
 			err = sysfs_create_file(&dev->kobj,
 						it87_attributes_in_beep[i]);
 			if (err)
-				goto ERROR4;
+				goto error;
 		}
 	}
 
@@ -2101,12 +2069,12 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			continue;
 		err = sysfs_create_group(&dev->kobj, &it87_group_temp[i]);
 		if (err)
-			goto ERROR4;
+			goto error;
 		if (sio_data->beep_pin) {
 			err = sysfs_create_file(&dev->kobj,
 						it87_attributes_temp_beep[i]);
 			if (err)
-				goto ERROR4;
+				goto error;
 		}
 	}
 
@@ -2118,13 +2086,13 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			continue;
 		err = sysfs_create_group(&dev->kobj, &fan_group[i]);
 		if (err)
-			goto ERROR4;
+			goto error;
 
 		if (sio_data->beep_pin) {
 			err = sysfs_create_file(&dev->kobj,
 						it87_attributes_fan_beep[i]);
 			if (err)
-				goto ERROR4;
+				goto error;
 			if (!fan_beep_need_rw)
 				continue;
 
@@ -2149,14 +2117,14 @@ static int __devinit it87_probe(struct platform_device *pdev)
 			err = sysfs_create_group(&dev->kobj,
 						 &it87_group_pwm[i]);
 			if (err)
-				goto ERROR4;
+				goto error;
 
 			if (!has_old_autopwm(data))
 				continue;
 			err = sysfs_create_group(&dev->kobj,
 						 &it87_group_autopwm[i]);
 			if (err)
-				goto ERROR4;
+				goto error;
 		}
 	}
 
@@ -2166,7 +2134,7 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		data->vid = sio_data->vid_value;
 		err = sysfs_create_group(&dev->kobj, &it87_group_vid);
 		if (err)
-			goto ERROR4;
+			goto error;
 	}
 
 	/* Export labels for internal sensors */
@@ -2176,18 +2144,18 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		err = sysfs_create_file(&dev->kobj,
 					it87_attributes_label[i]);
 		if (err)
-			goto ERROR4;
+			goto error;
 	}
 
 	data->hwmon_dev = hwmon_device_register(dev);
 	if (IS_ERR(data->hwmon_dev)) {
 		err = PTR_ERR(data->hwmon_dev);
-		goto ERROR4;
+		goto error;
 	}
 
 	return 0;
 
-ERROR4:
+error:
 	it87_remove_files(dev);
 	return err;
 }
@@ -2375,7 +2343,7 @@ static void __devinit it87_init_device(struct platform_device *pdev)
 
 	/* Start monitoring */
 	it87_write_value(data, IT87_REG_CONFIG,
-			 (it87_read_value(data, IT87_REG_CONFIG) & 0x36)
+			 (it87_read_value(data, IT87_REG_CONFIG) & 0x3e)
 			 | (update_vbat ? 0x41 : 0x01));
 }
 

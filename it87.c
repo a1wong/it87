@@ -205,6 +205,8 @@ static const u8 IT87_REG_FAN[]		= { 0x0d, 0x0e, 0x0f, 0x80, 0x82 };
 static const u8 IT87_REG_FAN_MIN[]	= { 0x10, 0x11, 0x12, 0x84, 0x86 };
 static const u8 IT87_REG_FANX[]		= { 0x18, 0x19, 0x1a, 0x81, 0x83 };
 static const u8 IT87_REG_FANX_MIN[]	= { 0x1b, 0x1c, 0x1d, 0x85, 0x87 };
+static const u8 IT87_REG_TEMP_OFFSET[]	= { 0x56, 0x57, 0x59 };
+
 #define IT87_REG_FAN_MAIN_CTRL 0x13
 #define IT87_REG_FAN_CTL       0x14
 #define IT87_REG_PWM(nr)       (0x15 + (nr))
@@ -217,8 +219,6 @@ static const u8 IT87_REG_FANX_MIN[]	= { 0x1b, 0x1c, 0x1d, 0x85, 0x87 };
 #define IT87_REG_VIN_MIN(nr)   (0x31 + (nr) * 2)
 #define IT87_REG_TEMP_HIGH(nr) (0x40 + (nr) * 2)
 #define IT87_REG_TEMP_LOW(nr)  (0x41 + (nr) * 2)
-
-#define IT87_REG_TEMP_OFFSET(nr)	(0x55 + (1 << ((nr) - 1)))
 
 #define IT87_REG_VIN_ENABLE    0x50
 #define IT87_REG_TEMP_ENABLE   0x51
@@ -539,16 +539,22 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *attr,
 	int index = sattr->index;
 	struct it87_data *data = dev_get_drvdata(dev);
 	long val;
+	u8 reg;
 
 	if (kstrtol(buf, 10, &val) < 0)
 		return -EINVAL;
 
 	mutex_lock(&data->update_lock);
 	data->temp[nr][index] = TEMP_TO_REG(val);
+	if (index == 3) {
+		reg = it87_read_value(data, IT87_REG_BEEP_ENABLE);
+		reg |= 0x80;
+		it87_write_value(data, IT87_REG_BEEP_ENABLE, reg);
+	}
 	it87_write_value(data,
 			 index == 1 ? IT87_REG_TEMP_LOW(nr)
 				    : index == 2 ? IT87_REG_TEMP_HIGH(nr)
-						 : IT87_REG_TEMP_OFFSET(nr),
+						 : IT87_REG_TEMP_OFFSET[nr],
 			 data->temp[nr][index]);
 	data->valid = 0;
 	mutex_unlock(&data->update_lock);
@@ -2357,7 +2363,7 @@ static struct it87_data *it87_update_device(struct device *dev)
 			data->temp[i][2] =
 				it87_read_value(data, IT87_REG_TEMP_HIGH(i));
 			data->temp[i][3] =
-				it87_read_value(data, IT87_REG_TEMP_OFFSET(i));
+				it87_read_value(data, IT87_REG_TEMP_OFFSET[i]);
 		}
 
 		/* Newer chips don't have clock dividers */

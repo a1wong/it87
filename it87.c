@@ -58,7 +58,6 @@
 #include <linux/dmi.h>
 #include <linux/acpi.h>
 #include <linux/io.h>
-#include <linux/version.h>
 #include "compat.h"
 
 #define DRVNAME "it87"
@@ -231,19 +230,24 @@ static const u8 IT87_REG_TEMP_OFFSET[]	= { 0x56, 0x57, 0x59 };
 #define IT87_REG_AUTO_PWM(nr, i)  (0x65 + (nr) * 8 + (i))
 
 struct it87_devices {
-	const char * const name;
+	const char *name;
 	u16 features;
+	u8 peci_mask;
+	u8 old_peci_mask;
 };
 
-#define	FEAT_12MV_ADC		(1 << 0)
-#define	FEAT_NEWER_AUTOPWM	(1 << 1)
-#define	FEAT_OLD_AUTOPWM	(1 << 2)
-#define	FEAT_16BIT_FAN		(1 << 3)
+#define FEAT_12MV_ADC		(1 << 0)
+#define FEAT_NEWER_AUTOPWM	(1 << 1)
+#define FEAT_OLD_AUTOPWM	(1 << 2)
+#define FEAT_16BIT_FANS		(1 << 3)
+#define FEAT_TEMP_OFFSET	(1 << 4)
+#define FEAT_TEMP_PECI		(1 << 5)
+#define FEAT_TEMP_OLD_PECI	(1 << 6)
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
 		.name = "it87",
-		.features = FEAT_OLD_AUTOPWM,	/* may need to override */
+		.features = FEAT_OLD_AUTOPWM,	/* may need to overwrite */
 	},
 	[it8712] = {
 		.name = "it8712",
@@ -251,38 +255,57 @@ static const struct it87_devices it87_devices[] = {
 	},
 	[it8716] = {
 		.name = "it8716",
-		.features = FEAT_16BIT_FAN,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET,
 	},
 	[it8718] = {
 		.name = "it8718",
-		.features = FEAT_16BIT_FAN,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
+		  | FEAT_TEMP_OLD_PECI,
+		.old_peci_mask = 0x4,
 	},
 	[it8720] = {
 		.name = "it8720",
-		.features = FEAT_16BIT_FAN,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
+		  | FEAT_TEMP_OLD_PECI,
+		.old_peci_mask = 0x4,
 	},
 	[it8721] = {
 		.name = "it8721",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FAN,
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI,
+		.peci_mask = 0x05,
+		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
 	[it8728] = {
 		.name = "it8728",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FAN,
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		.peci_mask = 0x07,
 	},
 	[it8782] = {
 		.name = "it8782",
-		.features = FEAT_16BIT_FAN,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
+		  | FEAT_TEMP_OLD_PECI,
+		.old_peci_mask = 0x4,
 	},
 	[it8783] = {
 		.name = "it8783",
-		.features = FEAT_16BIT_FAN,
+		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
+		  | FEAT_TEMP_OLD_PECI,
+		.old_peci_mask = 0x4,
 	},
 };
 
-#define has_16bit_fans(data)	((data)->features & FEAT_16BIT_FAN)
+#define has_16bit_fans(data)	((data)->features & FEAT_16BIT_FANS)
 #define has_12mv_adc(data)	((data)->features & FEAT_12MV_ADC)
 #define has_newer_autopwm(data)	((data)->features & FEAT_NEWER_AUTOPWM)
 #define has_old_autopwm(data)	((data)->features & FEAT_OLD_AUTOPWM)
+#define has_temp_offset(data)	((data)->features & FEAT_TEMP_OFFSET)
+#define has_temp_peci(data, nr)	(((data)->features & FEAT_TEMP_PECI) && \
+				 ((data)->peci_mask & (1 << nr)))
+#define has_temp_old_peci(data, nr) \
+				(((data)->features & FEAT_TEMP_OLD_PECI) && \
+				 ((data)->old_peci_mask & (1 << nr)))
 
 struct it87_sio_data {
 	enum chips type;
@@ -306,7 +329,9 @@ struct it87_sio_data {
 struct it87_data {
 	struct device *hwmon_dev;
 	enum chips type;
-	u32 features;
+	u16 features;
+	u8 peci_mask;
+	u8 old_peci_mask;
 
 	unsigned short addr;
 	const char *name;
@@ -320,7 +345,8 @@ struct it87_data {
 	u16 fan[5][2];		/* Register values, [nr][0]=fan, [1]=min */
 	u8 has_temp;		/* Bitfield, temp sensors enabled */
 	s8 temp[3][4];		/* [nr][0]=temp, [1]=min, [2]=max, [3]=offset */
-	u8 sensor;		/* Register value */
+	u8 sensor;		/* Register value (IT87_REG_TEMP_ENABLE) */
+	u8 extra;		/* Register value (IT87_REG_TEMP_EXTRA) */
 	u8 fan_div[3];		/* Register encoding, shifted right */
 	u8 vid;			/* Register encoding, combined */
 	u8 vrm;
@@ -483,39 +509,53 @@ static ssize_t set_in(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-#define S_IRUGOWU	(S_IRUGO | S_IWUSR)
-
 static SENSOR_DEVICE_ATTR_2(in0_input, S_IRUGO, show_in, NULL, 0, 0);
-static SENSOR_DEVICE_ATTR_2(in0_min, S_IRUGOWU, show_in, set_in, 0, 1);
-static SENSOR_DEVICE_ATTR_2(in0_max, S_IRUGOWU, show_in, set_in, 0, 2);
+static SENSOR_DEVICE_ATTR_2(in0_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    0, 1);
+static SENSOR_DEVICE_ATTR_2(in0_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    0, 2);
 
 static SENSOR_DEVICE_ATTR_2(in1_input, S_IRUGO, show_in, NULL, 1, 0);
-static SENSOR_DEVICE_ATTR_2(in1_min, S_IRUGOWU, show_in, set_in, 1, 1);
-static SENSOR_DEVICE_ATTR_2(in1_max, S_IRUGOWU, show_in, set_in, 1, 2);
+static SENSOR_DEVICE_ATTR_2(in1_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    1, 1);
+static SENSOR_DEVICE_ATTR_2(in1_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    1, 2);
 
 static SENSOR_DEVICE_ATTR_2(in2_input, S_IRUGO, show_in, NULL, 2, 0);
-static SENSOR_DEVICE_ATTR_2(in2_min, S_IRUGOWU, show_in, set_in, 2, 1);
-static SENSOR_DEVICE_ATTR_2(in2_max, S_IRUGOWU, show_in, set_in, 2, 2);
+static SENSOR_DEVICE_ATTR_2(in2_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    2, 1);
+static SENSOR_DEVICE_ATTR_2(in2_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    2, 2);
 
 static SENSOR_DEVICE_ATTR_2(in3_input, S_IRUGO, show_in, NULL, 3, 0);
-static SENSOR_DEVICE_ATTR_2(in3_min, S_IRUGOWU, show_in, set_in, 3, 1);
-static SENSOR_DEVICE_ATTR_2(in3_max, S_IRUGOWU, show_in, set_in, 3, 2);
+static SENSOR_DEVICE_ATTR_2(in3_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    3, 1);
+static SENSOR_DEVICE_ATTR_2(in3_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    3, 2);
 
 static SENSOR_DEVICE_ATTR_2(in4_input, S_IRUGO, show_in, NULL, 4, 0);
-static SENSOR_DEVICE_ATTR_2(in4_min, S_IRUGOWU, show_in, set_in, 4, 1);
-static SENSOR_DEVICE_ATTR_2(in4_max, S_IRUGOWU, show_in, set_in, 4, 2);
+static SENSOR_DEVICE_ATTR_2(in4_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    4, 1);
+static SENSOR_DEVICE_ATTR_2(in4_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    4, 2);
 
 static SENSOR_DEVICE_ATTR_2(in5_input, S_IRUGO, show_in, NULL, 5, 0);
-static SENSOR_DEVICE_ATTR_2(in5_min, S_IRUGOWU, show_in, set_in, 5, 1);
-static SENSOR_DEVICE_ATTR_2(in5_max, S_IRUGOWU, show_in, set_in, 5, 2);
+static SENSOR_DEVICE_ATTR_2(in5_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    5, 1);
+static SENSOR_DEVICE_ATTR_2(in5_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    5, 2);
 
 static SENSOR_DEVICE_ATTR_2(in6_input, S_IRUGO, show_in, NULL, 6, 0);
-static SENSOR_DEVICE_ATTR_2(in6_min, S_IRUGOWU, show_in, set_in, 6, 1);
-static SENSOR_DEVICE_ATTR_2(in6_max, S_IRUGOWU, show_in, set_in, 6, 2);
+static SENSOR_DEVICE_ATTR_2(in6_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    6, 1);
+static SENSOR_DEVICE_ATTR_2(in6_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    6, 2);
 
 static SENSOR_DEVICE_ATTR_2(in7_input, S_IRUGO, show_in, NULL, 7, 0);
-static SENSOR_DEVICE_ATTR_2(in7_min, S_IRUGOWU, show_in, set_in, 7, 1);
-static SENSOR_DEVICE_ATTR_2(in7_max, S_IRUGOWU, show_in, set_in, 7, 2);
+static SENSOR_DEVICE_ATTR_2(in7_min, S_IRUGO | S_IWUSR, show_in, set_in,
+			    7, 1);
+static SENSOR_DEVICE_ATTR_2(in7_max, S_IRUGO | S_IWUSR, show_in, set_in,
+			    7, 2);
 
 static SENSOR_DEVICE_ATTR_2(in8_input, S_IRUGO, show_in, NULL, 8, 0);
 
@@ -539,49 +579,72 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *attr,
 	int index = sattr->index;
 	struct it87_data *data = dev_get_drvdata(dev);
 	long val;
-	u8 reg;
+	u8 reg, regval;
 
 	if (kstrtol(buf, 10, &val) < 0)
 		return -EINVAL;
 
 	mutex_lock(&data->update_lock);
-	data->temp[nr][index] = TEMP_TO_REG(val);
-	if (index == 3) {
-		reg = it87_read_value(data, IT87_REG_BEEP_ENABLE);
-		reg |= 0x80;
-		it87_write_value(data, IT87_REG_BEEP_ENABLE, reg);
+
+	switch (index) {
+	default:
+	case 1:
+		reg = IT87_REG_TEMP_LOW(nr);
+		break;
+	case 2:
+		reg = IT87_REG_TEMP_HIGH(nr);
+		break;
+	case 3:
+		regval = it87_read_value(data, IT87_REG_BEEP_ENABLE);
+		if (!(regval & 0x80)) {
+			regval |= 0x80;
+			it87_write_value(data, IT87_REG_BEEP_ENABLE, regval);
+		}
+		data->valid = 0;
+		reg = IT87_REG_TEMP_OFFSET[nr];
+		break;
 	}
-	it87_write_value(data,
-			 index == 1 ? IT87_REG_TEMP_LOW(nr)
-				    : index == 2 ? IT87_REG_TEMP_HIGH(nr)
-						 : IT87_REG_TEMP_OFFSET[nr],
-			 data->temp[nr][index]);
-	data->valid = 0;
+
+	data->temp[nr][index] = TEMP_TO_REG(val);
+	it87_write_value(data, reg, data->temp[nr][index]);
 	mutex_unlock(&data->update_lock);
 	return count;
 }
 
 static SENSOR_DEVICE_ATTR_2(temp1_input, S_IRUGO, show_temp, NULL, 0, 0);
-static SENSOR_DEVICE_ATTR_2(temp1_min, S_IRUGOWU, show_temp, set_temp, 0, 1);
-static SENSOR_DEVICE_ATTR_2(temp1_max, S_IRUGOWU, show_temp, set_temp, 0, 2);
-static SENSOR_DEVICE_ATTR_2(temp1_offset, S_IRUGOWU, show_temp, set_temp, 0, 3);
+static SENSOR_DEVICE_ATTR_2(temp1_min, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    0, 1);
+static SENSOR_DEVICE_ATTR_2(temp1_max, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    0, 2);
+static SENSOR_DEVICE_ATTR_2(temp1_offset, S_IRUGO | S_IWUSR, show_temp,
+			    set_temp, 0, 3);
 static SENSOR_DEVICE_ATTR_2(temp2_input, S_IRUGO, show_temp, NULL, 1, 0);
-static SENSOR_DEVICE_ATTR_2(temp2_min, S_IRUGOWU, show_temp, set_temp, 1, 1);
-static SENSOR_DEVICE_ATTR_2(temp2_max, S_IRUGOWU, show_temp, set_temp, 1, 2);
-static SENSOR_DEVICE_ATTR_2(temp2_offset, S_IRUGOWU, show_temp, set_temp, 1, 3);
+static SENSOR_DEVICE_ATTR_2(temp2_min, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    1, 1);
+static SENSOR_DEVICE_ATTR_2(temp2_max, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    1, 2);
+static SENSOR_DEVICE_ATTR_2(temp2_offset, S_IRUGO | S_IWUSR, show_temp,
+			    set_temp, 1, 3);
 static SENSOR_DEVICE_ATTR_2(temp3_input, S_IRUGO, show_temp, NULL, 2, 0);
-static SENSOR_DEVICE_ATTR_2(temp3_min, S_IRUGOWU, show_temp, set_temp, 2, 1);
-static SENSOR_DEVICE_ATTR_2(temp3_max, S_IRUGOWU, show_temp, set_temp, 2, 2);
-static SENSOR_DEVICE_ATTR_2(temp3_offset, S_IRUGOWU, show_temp, set_temp, 2, 3);
+static SENSOR_DEVICE_ATTR_2(temp3_min, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    2, 1);
+static SENSOR_DEVICE_ATTR_2(temp3_max, S_IRUGO | S_IWUSR, show_temp, set_temp,
+			    2, 2);
+static SENSOR_DEVICE_ATTR_2(temp3_offset, S_IRUGO | S_IWUSR, show_temp,
+			    set_temp, 2, 3);
 
-static ssize_t show_type(struct device *dev, struct device_attribute *attr,
-			 char *buf)
+static ssize_t show_temp_type(struct device *dev, struct device_attribute *attr,
+			      char *buf)
 {
 	struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
 	int nr = sensor_attr->index;
 	struct it87_data *data = it87_update_device(dev);
 	u8 reg = data->sensor;	    /* In case value is updated while used */
+	u8 extra = data->extra;
 
+	if ((has_temp_peci(data, nr) && (reg >> 6 == nr + 1))
+	    || (has_temp_old_peci(data, nr) && (extra & 0x80)))
+		return sprintf(buf, "6\n");  /* Intel PECI */
 	if (reg & (1 << nr))
 		return sprintf(buf, "3\n");  /* thermal diode */
 	if (reg & (8 << nr))
@@ -589,15 +652,15 @@ static ssize_t show_type(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "0\n");      /* disabled */
 }
 
-static ssize_t set_type(struct device *dev, struct device_attribute *attr,
-			const char *buf, size_t count)
+static ssize_t set_temp_type(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t count)
 {
 	struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
 	int nr = sensor_attr->index;
 
 	struct it87_data *data = dev_get_drvdata(dev);
 	long val;
-	u8 reg;
+	u8 reg, extra;
 
 	if (kstrtol(buf, 10, &val) < 0)
 		return -EINVAL;
@@ -605,30 +668,45 @@ static ssize_t set_type(struct device *dev, struct device_attribute *attr,
 	reg = it87_read_value(data, IT87_REG_TEMP_ENABLE);
 	reg &= ~(1 << nr);
 	reg &= ~(8 << nr);
+	if (has_temp_peci(data, nr) && (reg >> 6 == nr + 1 || val == 6))
+		reg &= 0x3f;
+	extra = it87_read_value(data, IT87_REG_TEMP_EXTRA);
+	if (has_temp_old_peci(data, nr) && ((extra & 0x80) || val == 6))
+		extra &= 0x7f;
 	if (val == 2) {	/* backwards compatibility */
 		dev_warn(dev,
 			 "Sensor type 2 is deprecated, please use 4 instead\n");
 		val = 4;
 	}
-	/* 3 = thermal diode; 4 = thermistor; 0 = disabled */
+	/* 3 = thermal diode; 4 = thermistor; 6 = Intel PECI; 0 = disabled */
 	if (val == 3)
 		reg |= 1 << nr;
 	else if (val == 4)
 		reg |= 8 << nr;
+	else if (has_temp_peci(data, nr) && val == 6)
+		reg |= (nr + 1) << 6;
+	else if (has_temp_old_peci(data, nr) && val == 6)
+		extra |= 0x80;
 	else if (val != 0)
 		return -EINVAL;
 
 	mutex_lock(&data->update_lock);
 	data->sensor = reg;
+	data->extra = extra;
 	it87_write_value(data, IT87_REG_TEMP_ENABLE, data->sensor);
+	if (has_temp_old_peci(data, nr))
+		it87_write_value(data, IT87_REG_TEMP_EXTRA, data->extra);
 	data->valid = 0;	/* Force cache refresh */
 	mutex_unlock(&data->update_lock);
 	return count;
 }
 
-static SENSOR_DEVICE_ATTR(temp1_type, S_IRUGOWU, show_type, set_type, 0);
-static SENSOR_DEVICE_ATTR(temp2_type, S_IRUGOWU, show_type, set_type, 1);
-static SENSOR_DEVICE_ATTR(temp3_type, S_IRUGOWU, show_type, set_type, 2);
+static SENSOR_DEVICE_ATTR(temp1_type, S_IRUGO | S_IWUSR, show_temp_type,
+			  set_temp_type, 0);
+static SENSOR_DEVICE_ATTR(temp2_type, S_IRUGO | S_IWUSR, show_temp_type,
+			  set_temp_type, 1);
+static SENSOR_DEVICE_ATTR(temp3_type, S_IRUGO | S_IWUSR, show_temp_type,
+			  set_temp_type, 2);
 
 /* 3 Fans */
 
@@ -713,7 +791,13 @@ static ssize_t set_fan(struct device *dev, struct device_attribute *attr,
 
 	mutex_lock(&data->update_lock);
 
-	if (!has_16bit_fans(data)) {
+	if (has_16bit_fans(data)) {
+		data->fan[nr][index] = FAN16_TO_REG(val);
+		it87_write_value(data, IT87_REG_FAN_MIN[nr],
+				 data->fan[nr][index] & 0xff);
+		it87_write_value(data, IT87_REG_FANX_MIN[nr],
+				 data->fan[nr][index] >> 8);
+	} else {
 		reg = it87_read_value(data, IT87_REG_FAN_DIV);
 		switch (nr) {
 		case 0:
@@ -730,12 +814,6 @@ static ssize_t set_fan(struct device *dev, struct device_attribute *attr,
 		  FAN_TO_REG(val, DIV_FROM_REG(data->fan_div[nr]));
 		it87_write_value(data, IT87_REG_FAN_MIN[nr],
 				 data->fan[nr][index]);
-	} else {
-		data->fan[nr][index] = FAN16_TO_REG(val);
-		it87_write_value(data, IT87_REG_FAN_MIN[nr],
-				 data->fan[nr][index] & 0xff);
-		it87_write_value(data, IT87_REG_FANX_MIN[nr],
-				 data->fan[nr][index] >> 8);
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -1056,96 +1134,104 @@ static ssize_t set_auto_temp(struct device *dev,
 }
 
 static SENSOR_DEVICE_ATTR_2(fan1_input, S_IRUGO, show_fan, NULL, 0, 0);
-static SENSOR_DEVICE_ATTR_2(fan1_min, S_IRUGOWU, show_fan, set_fan, 0, 1);
-static SENSOR_DEVICE_ATTR(fan1_div, S_IRUGOWU, show_fan_div, set_fan_div, 0);
+static SENSOR_DEVICE_ATTR_2(fan1_min, S_IRUGO | S_IWUSR, show_fan, set_fan,
+			    0, 1);
+static SENSOR_DEVICE_ATTR(fan1_div, S_IRUGO | S_IWUSR, show_fan_div,
+			  set_fan_div, 0);
 
 static SENSOR_DEVICE_ATTR_2(fan2_input, S_IRUGO, show_fan, NULL, 1, 0);
-static SENSOR_DEVICE_ATTR_2(fan2_min, S_IRUGOWU, show_fan, set_fan, 1, 1);
-static SENSOR_DEVICE_ATTR(fan2_div, S_IRUGOWU, show_fan_div, set_fan_div, 1);
+static SENSOR_DEVICE_ATTR_2(fan2_min, S_IRUGO | S_IWUSR, show_fan, set_fan,
+			    1, 1);
+static SENSOR_DEVICE_ATTR(fan2_div, S_IRUGO | S_IWUSR, show_fan_div,
+			  set_fan_div, 1);
 
 static SENSOR_DEVICE_ATTR_2(fan3_input, S_IRUGO, show_fan, NULL, 2, 0);
-static SENSOR_DEVICE_ATTR_2(fan3_min, S_IRUGOWU, show_fan, set_fan, 2, 1);
-static SENSOR_DEVICE_ATTR(fan3_div, S_IRUGOWU, show_fan_div, set_fan_div, 2);
+static SENSOR_DEVICE_ATTR_2(fan3_min, S_IRUGO | S_IWUSR, show_fan, set_fan,
+			    2, 1);
+static SENSOR_DEVICE_ATTR(fan3_div, S_IRUGO | S_IWUSR, show_fan_div,
+			  set_fan_div, 2);
 
 static SENSOR_DEVICE_ATTR_2(fan4_input, S_IRUGO, show_fan, NULL, 3, 0);
-static SENSOR_DEVICE_ATTR_2(fan4_min, S_IRUGOWU, show_fan, set_fan, 3, 1);
+static SENSOR_DEVICE_ATTR_2(fan4_min, S_IRUGO | S_IWUSR, show_fan, set_fan,
+			    3, 1);
 
 static SENSOR_DEVICE_ATTR_2(fan5_input, S_IRUGO, show_fan, NULL, 4, 0);
-static SENSOR_DEVICE_ATTR_2(fan5_min, S_IRUGOWU, show_fan, set_fan, 4, 1);
+static SENSOR_DEVICE_ATTR_2(fan5_min, S_IRUGO | S_IWUSR, show_fan, set_fan,
+			    4, 1);
 
-static SENSOR_DEVICE_ATTR(pwm1_enable, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm1_enable, S_IRUGO | S_IWUSR,
 			  show_pwm_enable, set_pwm_enable, 0);
-static SENSOR_DEVICE_ATTR(pwm1, S_IRUGOWU, show_pwm, set_pwm, 0);
-static DEVICE_ATTR(pwm1_freq, S_IRUGOWU, show_pwm_freq, set_pwm_freq);
-static SENSOR_DEVICE_ATTR(pwm1_auto_channels_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm1, S_IRUGO | S_IWUSR, show_pwm, set_pwm, 0);
+static DEVICE_ATTR(pwm1_freq, S_IRUGO | S_IWUSR, show_pwm_freq, set_pwm_freq);
+static SENSOR_DEVICE_ATTR(pwm1_auto_channels_temp, S_IRUGO | S_IWUSR,
 			  show_pwm_temp_map, set_pwm_temp_map, 0);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 0, 0);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point2_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point2_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 0, 1);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point3_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point3_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 0, 2);
 static SENSOR_DEVICE_ATTR_2(pwm1_auto_point4_pwm, S_IRUGO,
 			    show_auto_pwm, NULL, 0, 3);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 0, 1);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_temp_hyst, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point1_temp_hyst, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 0, 0);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point2_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point2_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 0, 2);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point3_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point3_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 0, 3);
-static SENSOR_DEVICE_ATTR_2(pwm1_auto_point4_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm1_auto_point4_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 0, 4);
 
-static SENSOR_DEVICE_ATTR(pwm2_enable, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm2_enable, S_IRUGO | S_IWUSR,
 			  show_pwm_enable, set_pwm_enable, 1);
-static SENSOR_DEVICE_ATTR(pwm2, S_IRUGOWU, show_pwm, set_pwm, 1);
+static SENSOR_DEVICE_ATTR(pwm2, S_IRUGO | S_IWUSR, show_pwm, set_pwm, 1);
 static DEVICE_ATTR(pwm2_freq, S_IRUGO, show_pwm_freq, NULL);
-static SENSOR_DEVICE_ATTR(pwm2_auto_channels_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm2_auto_channels_temp, S_IRUGO | S_IWUSR,
 			  show_pwm_temp_map, set_pwm_temp_map, 1);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 1, 0);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point2_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point2_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 1, 1);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point3_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point3_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 1, 2);
 static SENSOR_DEVICE_ATTR_2(pwm2_auto_point4_pwm, S_IRUGO,
 			    show_auto_pwm, NULL, 1, 3);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 1, 1);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_temp_hyst, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point1_temp_hyst, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 1, 0);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point2_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point2_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 1, 2);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point3_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point3_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 1, 3);
-static SENSOR_DEVICE_ATTR_2(pwm2_auto_point4_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm2_auto_point4_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 1, 4);
 
-static SENSOR_DEVICE_ATTR(pwm3_enable, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm3_enable, S_IRUGO | S_IWUSR,
 			  show_pwm_enable, set_pwm_enable, 2);
-static SENSOR_DEVICE_ATTR(pwm3, S_IRUGOWU, show_pwm, set_pwm, 2);
+static SENSOR_DEVICE_ATTR(pwm3, S_IRUGO | S_IWUSR, show_pwm, set_pwm, 2);
 static DEVICE_ATTR(pwm3_freq, S_IRUGO, show_pwm_freq, NULL);
-static SENSOR_DEVICE_ATTR(pwm3_auto_channels_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR(pwm3_auto_channels_temp, S_IRUGO | S_IWUSR,
 			  show_pwm_temp_map, set_pwm_temp_map, 2);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 2, 0);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point2_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point2_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 2, 1);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point3_pwm, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point3_pwm, S_IRUGO | S_IWUSR,
 			    show_auto_pwm, set_auto_pwm, 2, 2);
 static SENSOR_DEVICE_ATTR_2(pwm3_auto_point4_pwm, S_IRUGO,
 			    show_auto_pwm, NULL, 2, 3);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 2, 1);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_temp_hyst, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point1_temp_hyst, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 2, 0);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point2_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point2_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 2, 2);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point3_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point3_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 2, 3);
-static SENSOR_DEVICE_ATTR_2(pwm3_auto_point4_temp, S_IRUGOWU,
+static SENSOR_DEVICE_ATTR_2(pwm3_auto_point4_temp, S_IRUGO | S_IWUSR,
 			    show_auto_temp, set_auto_temp, 2, 4);
 
 /* Alarms */
@@ -1384,12 +1470,11 @@ static const struct attribute_group it87_group_in[9] = {
 	{ .attrs = it87_attributes_in[8] },
 };
 
-static struct attribute *it87_attributes_temp[3][7] = {
+static struct attribute *it87_attributes_temp[3][6] = {
 {
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
 	&sensor_dev_attr_temp1_max.dev_attr.attr,
 	&sensor_dev_attr_temp1_min.dev_attr.attr,
-	&sensor_dev_attr_temp1_offset.dev_attr.attr,
 	&sensor_dev_attr_temp1_type.dev_attr.attr,
 	&sensor_dev_attr_temp1_alarm.dev_attr.attr,
 	NULL
@@ -1397,7 +1482,6 @@ static struct attribute *it87_attributes_temp[3][7] = {
 	&sensor_dev_attr_temp2_input.dev_attr.attr,
 	&sensor_dev_attr_temp2_max.dev_attr.attr,
 	&sensor_dev_attr_temp2_min.dev_attr.attr,
-	&sensor_dev_attr_temp2_offset.dev_attr.attr,
 	&sensor_dev_attr_temp2_type.dev_attr.attr,
 	&sensor_dev_attr_temp2_alarm.dev_attr.attr,
 	NULL
@@ -1405,7 +1489,6 @@ static struct attribute *it87_attributes_temp[3][7] = {
 	&sensor_dev_attr_temp3_input.dev_attr.attr,
 	&sensor_dev_attr_temp3_max.dev_attr.attr,
 	&sensor_dev_attr_temp3_min.dev_attr.attr,
-	&sensor_dev_attr_temp3_offset.dev_attr.attr,
 	&sensor_dev_attr_temp3_type.dev_attr.attr,
 	&sensor_dev_attr_temp3_alarm.dev_attr.attr,
 	NULL
@@ -1415,6 +1498,12 @@ static const struct attribute_group it87_group_temp[3] = {
 	{ .attrs = it87_attributes_temp[0] },
 	{ .attrs = it87_attributes_temp[1] },
 	{ .attrs = it87_attributes_temp[2] },
+};
+
+static struct attribute *it87_attributes_temp_offset[] = {
+	&sensor_dev_attr_temp1_offset.dev_attr.attr,
+	&sensor_dev_attr_temp2_offset.dev_attr.attr,
+	&sensor_dev_attr_temp3_offset.dev_attr.attr,
 };
 
 static struct attribute *it87_attributes[] = {
@@ -1860,6 +1949,9 @@ static void it87_remove_files(struct device *dev)
 		if (!(data->has_temp & (1 << i)))
 			continue;
 		sysfs_remove_group(&dev->kobj, &it87_group_temp[i]);
+		if (has_temp_offset(data))
+			sysfs_remove_file(&dev->kobj,
+					  it87_attributes_temp_offset[i]);
 		if (sio_data->beep_pin)
 			sysfs_remove_file(&dev->kobj,
 					  it87_attributes_temp_beep[i]);
@@ -1913,7 +2005,9 @@ static int __devinit it87_probe(struct platform_device *pdev)
 
 	data->addr = res->start;
 	data->type = sio_data->type;
-	data->features = it87_devices[data->type].features;
+	data->features = it87_devices[sio_data->type].features;
+	data->peci_mask = it87_devices[sio_data->type].peci_mask;
+	data->old_peci_mask = it87_devices[sio_data->type].old_peci_mask;
 	data->name = it87_devices[sio_data->type].name;
 	/*
 	 * IT8705F Datasheet 0.4.1, 3h == Version G.
@@ -1924,13 +2018,13 @@ static int __devinit it87_probe(struct platform_device *pdev)
 	case it87:
 		if (sio_data->revision >= 0x03) {
 			data->features &= ~FEAT_OLD_AUTOPWM;
-			data->features |= FEAT_16BIT_FAN;
+			data->features |= FEAT_16BIT_FANS;
 		}
 		break;
 	case it8712:
 		if (sio_data->revision >= 0x08) {
 			data->features &= ~FEAT_OLD_AUTOPWM;
-			data->features |= FEAT_16BIT_FAN;
+			data->features |= FEAT_16BIT_FANS;
 		}
 		break;
 	default:
@@ -1999,6 +2093,12 @@ static int __devinit it87_probe(struct platform_device *pdev)
 		err = sysfs_create_group(&dev->kobj, &it87_group_temp[i]);
 		if (err)
 			goto error;
+		if (has_temp_offset(data)) {
+			err = sysfs_create_file(&dev->kobj,
+						it87_attributes_temp_offset[i]);
+			if (err)
+				goto error;
+		}
 		if (sio_data->beep_pin) {
 			err = sysfs_create_file(&dev->kobj,
 						it87_attributes_temp_beep[i]);
@@ -2362,8 +2462,10 @@ static struct it87_data *it87_update_device(struct device *dev)
 				it87_read_value(data, IT87_REG_TEMP_LOW(i));
 			data->temp[i][2] =
 				it87_read_value(data, IT87_REG_TEMP_HIGH(i));
-			data->temp[i][3] =
-				it87_read_value(data, IT87_REG_TEMP_OFFSET[i]);
+			if (has_temp_offset(data))
+				data->temp[i][3] =
+				  it87_read_value(data,
+						  IT87_REG_TEMP_OFFSET[i]);
 		}
 
 		/* Newer chips don't have clock dividers */
@@ -2387,6 +2489,7 @@ static struct it87_data *it87_update_device(struct device *dev)
 			it87_update_pwm_ctrl(data, i);
 
 		data->sensor = it87_read_value(data, IT87_REG_TEMP_ENABLE);
+		data->extra = it87_read_value(data, IT87_REG_TEMP_EXTRA);
 		/*
 		 * The IT8705F does not have VID capability.
 		 * The IT8718F and later don't use IT87_REG_VID for the

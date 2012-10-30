@@ -9,6 +9,8 @@
 #ifndef COMPAT_H
 #define COMPAT_H
 
+#include <linux/version.h>
+
 #ifndef request_muxed_region
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 28)
 #define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name))

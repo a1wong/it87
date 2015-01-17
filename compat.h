@@ -11,6 +11,10 @@
 
 #include <linux/version.h>
 
+#ifndef clamp_val
+#define clamp_val SENSORS_LIMIT
+#endif
+
 #ifndef request_muxed_region
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 28)
 #define request_muxed_region(start,n,name)	__request_region(&ioport_resource, (start), (n), (name))

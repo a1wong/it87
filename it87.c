@@ -339,7 +339,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
 	},
-   [it8786] = {
+	[it8786] = {
 		.name = "it8786",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
@@ -1830,8 +1830,8 @@ static int __init it87_find(unsigned short *address,
 	sio_data->revision = superio_inb(DEVREV) & 0x0f;
 	pr_info("Found IT%04x%c chip at 0x%x, revision %d\n", chip_type,
 		chip_type == 0x8771 || chip_type == 0x8772 ||
-		chip_type == 0x8603 || chip_type == 0x8786 ? 'E' : 'F', *address,
-		sio_data->revision);
+		chip_type == 0x8603 || chip_type == 0x8786 ? 'E' : 'F',
+		*address, sio_data->revision);
 
 	/* in8 (Vbat) is always internal */
 	sio_data->internal = (1 << 2);

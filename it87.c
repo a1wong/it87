@@ -71,7 +71,7 @@
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8771,
-	     it8772, it8781, it8782, it8783, it8786, it8603, it8620, it8790 };
+	     it8772, it8781, it8782, it8783, it8786, it8790, it8603, it8620 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -230,6 +230,8 @@ static const u8 IT87_REG_TEMP_OFFSET[]	= { 0x56, 0x57, 0x59 };
 #define IT87_REG_VIN(nr)       (0x20 + (nr))
 #define IT87_REG_TEMP(nr)      (0x29 + (nr))
 
+#define IT87_REG_AVCC3		0x2f
+
 #define IT87_REG_VIN_MAX(nr)   (0x30 + (nr) * 2)
 #define IT87_REG_VIN_MIN(nr)   (0x31 + (nr) * 2)
 #define IT87_REG_TEMP_HIGH(nr) (0x40 + (nr) * 2)
@@ -250,6 +252,7 @@ struct it87_devices {
 	u16 features;
 	u8 peci_mask;
 	u8 old_peci_mask;
+	const char * const suffix;
 };
 
 #define FEAT_12MV_ADC		(1 << 0)
@@ -263,109 +266,130 @@ struct it87_devices {
 #define FEAT_FIVE_FANS		(1 << 8)	/* Supports five fans */
 #define FEAT_SIX_FANS		(1 << 9)	/* Supports six fans */
 #define FEAT_VID		(1 << 10)	/* Set if chip supports VID */
+#define FEAT_IN7_INTERNAL	(1 << 11)	/* Set if in7 is internal */
+#define FEAT_AVCC3		(1 << 12)	/* Chip supports in9/AVCC3 */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
 		.name = "it87",
 		.features = FEAT_OLD_AUTOPWM,	/* may need to overwrite */
+		.suffix = "F",
 	},
 	[it8712] = {
 		.name = "it8712",
 		.features = FEAT_OLD_AUTOPWM | FEAT_VID,
 						/* may need to overwrite */
+		.suffix = "F",
 	},
 	[it8716] = {
 		.name = "it8716",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
 		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
+		.suffix = "F",
 	},
 	[it8718] = {
 		.name = "it8718",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 		.old_peci_mask = 0x4,
+		.suffix = "F",
 	},
 	[it8720] = {
 		.name = "it8720",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_VID
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
 		.old_peci_mask = 0x4,
+		.suffix = "F",
 	},
 	[it8721] = {
 		.name = "it8721",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
-		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS,
+		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS | FEAT_IN7_INTERNAL,
 		.peci_mask = 0x05,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
+		.suffix = "F",
 	},
 	[it8728] = {
 		.name = "it8728",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
+		  | FEAT_IN7_INTERNAL,
 		.peci_mask = 0x07,
+		.suffix = "F",
 	},
 	[it8771] = {
 		.name = "it8771",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL,
 				/* PECI: guesswork */
 				/* 12mV ADC (OHM) */
 				/* 16 bit fans (OHM) */
 				/* three fans, always 16 bit (guesswork) */
 		.peci_mask = 0x07,
+		.suffix = "E",
 	},
 	[it8772] = {
 		.name = "it8772",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL,
 				/* PECI (coreboot) */
 				/* 12mV ADC (HWSensors4, OHM) */
 				/* 16 bit fans (HWSensors4, OHM) */
 				/* three fans, always 16 bit (datasheet) */
 		.peci_mask = 0x07,
+		.suffix = "E",
 	},
 	[it8781] = {
 		.name = "it8781",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
+		.suffix = "F",
 	},
 	[it8782] = {
 		.name = "it8782",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
+		.suffix = "F",
 	},
 	[it8783] = {
 		.name = "it8783",
 		.features = FEAT_16BIT_FANS | FEAT_TEMP_OFFSET
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG,
 		.old_peci_mask = 0x4,
+		.suffix = "E/F",
 	},
 	[it8786] = {
 		.name = "it8786",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL,
 		.peci_mask = 0x07,
-	},
-	[it8603] = {
-		.name = "it8603",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
-		.peci_mask = 0x07,
-	},
-	[it8620] = {
-		.name = "it8620",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS,
-		.peci_mask = 0x07,
+		.suffix = "E",
 	},
 	[it8790] = {
 		.name = "it8790",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI,
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL,
 		.peci_mask = 0x07,
+		.suffix = "E",
+	},
+	[it8603] = {
+		.name = "it8603",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
+		  | FEAT_AVCC3,
+		.peci_mask = 0x07,
+		.suffix = "E",
+	},
+	[it8620] = {
+		.name = "it8620",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
+		  | FEAT_IN7_INTERNAL | FEAT_AVCC3,
+		.peci_mask = 0x07,
+		.suffix = "E",
 	},
 };
 
@@ -384,6 +408,8 @@ static const struct it87_devices it87_devices[] = {
 						     FEAT_SIX_FANS))
 #define has_six_fans(data)	((data)->features & FEAT_SIX_FANS)
 #define has_vid(data)		((data)->features & FEAT_VID)
+#define has_in7_internal(data)	((data)->features & FEAT_IN7_INTERNAL)
+#define has_avcc3(data)		((data)->features & FEAT_AVCC3)
 
 struct it87_sio_data {
 	enum chips type;
@@ -1485,7 +1511,7 @@ static ssize_t show_label(struct device *dev, struct device_attribute *attr,
 static SENSOR_DEVICE_ATTR(in3_label, S_IRUGO, show_label, NULL, 0);
 static SENSOR_DEVICE_ATTR(in7_label, S_IRUGO, show_label, NULL, 1);
 static SENSOR_DEVICE_ATTR(in8_label, S_IRUGO, show_label, NULL, 2);
-/* special AVCC3 IT8603E in9 */
+/* AVCC3 */
 static SENSOR_DEVICE_ATTR(in9_label, S_IRUGO, show_label, NULL, 0);
 
 static ssize_t show_name(struct device *dev, struct device_attribute
@@ -1864,16 +1890,21 @@ static int __init it87_find(unsigned short *address,
 
 	err = 0;
 	sio_data->revision = superio_inb(DEVREV) & 0x0f;
-	pr_info("Found IT%04x%c chip at 0x%x, revision %d\n", chip_type,
-		chip_type == 0x8771 || chip_type == 0x8772 ||
-		chip_type == 0x8786 || chip_type == 0x8603 ||
-		chip_type == 0x8620 || chip_type == 0x8790 ? 'E' : 'F',
+	pr_info("Found IT%04x%s chip at 0x%x, revision %d\n", chip_type,
+		it87_devices[sio_data->type].suffix,
 		*address, sio_data->revision);
 
 	/* in8 (Vbat) is always internal */
 	sio_data->internal = (1 << 2);
-	/* Only the IT8603E has in9 */
-	if (sio_data->type != it8603)
+
+	/* in7 (VSB or VCCH5V) is always internal on some chips */
+	if (it87_devices[sio_data->type].features & FEAT_IN7_INTERNAL)
+		sio_data->internal |= (1 << 1);
+
+	/* in9 (AVCC3), always internal if supported */
+	if (it87_devices[sio_data->type].features & FEAT_AVCC3)
+		sio_data->internal |= (1 << 3); /* in9 is AVCC */
+	else
 		sio_data->skip_in |= (1 << 9);
 
 	if (!(it87_devices[sio_data->type].features & FEAT_VID))
@@ -1972,9 +2003,6 @@ static int __init it87_find(unsigned short *address,
 		sio_data->skip_in |= (1 << 5); /* No VIN5 */
 		sio_data->skip_in |= (1 << 6); /* No VIN6 */
 
-		sio_data->internal |= (1 << 1); /* in7 is VSB */
-		sio_data->internal |= (1 << 3); /* in9 is AVCC */
-
 		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else {
 		int reg;
@@ -2033,10 +2061,7 @@ static int __init it87_find(unsigned short *address,
 		}
 		if (reg & (1 << 0))
 			sio_data->internal |= (1 << 0);
-		if ((reg & (1 << 1)) ||
-		    sio_data->type == it8620 || sio_data->type == it8721 ||
-		    sio_data->type == it8728 || sio_data->type == it8771 ||
-		    sio_data->type == it8772 || sio_data->type == it8786)
+		if (reg & (1 << 1))
 			sio_data->internal |= (1 << 1);
 
 		/*
@@ -2597,8 +2622,8 @@ static struct it87_data *it87_update_device(struct device *dev)
 		}
 		/* in8 (battery) has no limit registers */
 		data->in[8][0] = it87_read_value(data, IT87_REG_VIN(8));
-		if (data->type == it8603)
-			data->in[9][0] = it87_read_value(data, 0x2f);
+		if (has_avcc3(data))
+			data->in[9][0] = it87_read_value(data, IT87_REG_AVCC3);
 
 		for (i = 0; i < 6; i++) {
 			/* Skip disabled fans */

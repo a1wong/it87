@@ -77,11 +77,12 @@ static unsigned short force_id;
 module_param(force_id, ushort, 0);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
-static struct platform_device *pdev;
+static struct platform_device *it87_pdev[2];
 
-#define	REG	0x2e	/* The register to read/write */
+#define	REG_2E	0x2e	/* The register to read/write */
+#define	REG_4E	0x4e	/* Secondary register to read/write */
+
 #define	DEV	0x07	/* Register: Logical device select */
-#define	VAL	0x2f	/* The value to read/write */
 #define PME	0x04	/* The device with the fan registers in it */
 
 /* The device with the IT8718F/IT8720F VID value in it */
@@ -90,54 +91,54 @@ static struct platform_device *pdev;
 #define	DEVID	0x20	/* Register: Device ID */
 #define	DEVREV	0x22	/* Register: Device Revision */
 
-static inline int superio_inb(int reg)
+static inline int superio_inb(int ioreg, int reg)
 {
-	outb(reg, REG);
-	return inb(VAL);
+	outb(reg, ioreg);
+	return inb(ioreg + 1);
 }
 
-static inline void superio_outb(int reg, int val)
+static inline void superio_outb(int ioreg, int reg, int val)
 {
-	outb(reg, REG);
-	outb(val, VAL);
+	outb(reg, ioreg);
+	outb(val, ioreg + 1);
 }
 
-static int superio_inw(int reg)
+static int superio_inw(int ioreg, int reg)
 {
 	int val;
-	outb(reg++, REG);
-	val = inb(VAL) << 8;
-	outb(reg, REG);
-	val |= inb(VAL);
+	outb(reg++, ioreg);
+	val = inb(ioreg + 1) << 8;
+	outb(reg, ioreg);
+	val |= inb(ioreg + 1);
 	return val;
 }
 
-static inline void superio_select(int ldn)
+static inline void superio_select(int ioreg, int ldn)
 {
-	outb(DEV, REG);
-	outb(ldn, VAL);
+	outb(DEV, ioreg);
+	outb(ldn, ioreg + 1);
 }
 
-static inline int superio_enter(void)
+static inline int superio_enter(int ioreg)
 {
 	/*
-	 * Try to reserve REG and REG + 1 for exclusive access.
+	 * Try to reserve ioreg and ioreg + 1 for exclusive access.
 	 */
-	if (!request_muxed_region(REG, 2, DRVNAME))
+	if (!request_muxed_region(ioreg, 2, DRVNAME))
 		return -EBUSY;
 
-	outb(0x87, REG);
-	outb(0x01, REG);
-	outb(0x55, REG);
-	outb(0x55, REG);
+	outb(0x87, ioreg);
+	outb(0x01, ioreg);
+	outb(0x55, ioreg);
+	outb(0x55, ioreg);
 	return 0;
 }
 
-static inline void superio_exit(void)
+static inline void superio_exit(int ioreg)
 {
-	outb(0x02, REG);
-	outb(0x02, VAL);
-	release_region(REG, 2);
+	outb(0x02, ioreg);
+	outb(0x02, ioreg + 1);
+	release_region(ioreg, 2);
 }
 
 /* Logical device 4 registers */
@@ -266,9 +267,9 @@ struct it87_devices {
 #define FEAT_TEMP_OLD_PECI	(1 << 6)
 #define FEAT_FAN16_CONFIG	(1 << 7)	/* Need to enable 16-bit fans */
 #define FEAT_FIVE_FANS		(1 << 8)	/* Supports five fans */
-#define FEAT_SIX_FANS		(1 << 9)	/* Supports six fans */
-#define FEAT_VID		(1 << 10)	/* Set if chip supports VID */
-#define FEAT_IN7_INTERNAL	(1 << 11)	/* Set if in7 is internal */
+#define FEAT_VID		(1 << 9)	/* Set if chip supports VID */
+#define FEAT_IN7_INTERNAL	(1 << 10)	/* Set if in7 is internal */
+#define FEAT_SIX_FANS		(1 << 11)	/* Supports six fans */
 #define FEAT_AVCC3		(1 << 12)	/* Chip supports in9/AVCC3 */
 #define FEAT_SIX_PWM		(1 << 13)	/* Chip supports 6 pwm chn */
 #define FEAT_PWM_FREQ2		(1 << 14)	/* Separate pwm freq 2 */
@@ -418,9 +419,9 @@ static const struct it87_devices it87_devices[] = {
 #define has_fan16_config(data)	((data)->features & FEAT_FAN16_CONFIG)
 #define has_five_fans(data)	((data)->features & (FEAT_FIVE_FANS | \
 						     FEAT_SIX_FANS))
-#define has_six_fans(data)	((data)->features & FEAT_SIX_FANS)
 #define has_vid(data)		((data)->features & FEAT_VID)
 #define has_in7_internal(data)	((data)->features & FEAT_IN7_INTERNAL)
+#define has_six_fans(data)	((data)->features & FEAT_SIX_FANS)
 #define has_avcc3(data)		((data)->features & FEAT_AVCC3)
 #define has_six_pwm(data)	((data)->features & FEAT_SIX_PWM)
 #define has_pwm_freq2(data)	((data)->features & FEAT_PWM_FREQ2)
@@ -562,6 +563,16 @@ static int DIV_TO_REG(int val)
 }
 #define DIV_FROM_REG(val) (1 << (val))
 
+/*
+ * pwm base frequencies. The frequency has to be divided by either 128 or 256,
+ * depending on the chip type, to calculate the actual pwm frequency.
+ *
+ * Some of the chip datasheets suggest a base frequency of 51kHz instead
+ * of 750kHz for the slowest base frequency, resulting in a pwm frequency
+ * of 200Hz. Sometimes both pwm frequency select registers are affected,
+ * sometimes just one. It is unknown if this is a datasheet error or real,
+ * so this is ignored for now.
+ */
 static const unsigned int pwm_freq[8] = {
 	48000000,
 	24000000,
@@ -1895,19 +1906,19 @@ static const struct attribute_group it87_group_label = {
 };
 
 /* SuperIO detection - will change isa_address if a chip is found */
-static int __init it87_find(unsigned short *address,
-	struct it87_sio_data *sio_data)
+static int __init it87_find(int sioaddr, unsigned short *address,
+			    struct it87_sio_data *sio_data)
 {
 	int err;
 	u16 chip_type;
 	const char *board_vendor, *board_name;
 
-	err = superio_enter();
+	err = superio_enter(sioaddr);
 	if (err)
 		return err;
 
 	err = -ENODEV;
-	chip_type = force_id ? force_id : superio_inw(DEVID);
+	chip_type = force_id ? force_id : superio_inw(sioaddr, DEVID);
 
 	switch (chip_type) {
 	case IT8705F_DEVID:
@@ -1950,15 +1961,15 @@ static int __init it87_find(unsigned short *address,
 	case IT8786E_DEVID:
 		sio_data->type = it8786;
 		break;
+	case IT8790E_DEVID:
+		sio_data->type = it8790;
+		break;
 	case IT8603E_DEVID:
 	case IT8623E_DEVID:
 		sio_data->type = it8603;
 		break;
 	case IT8620E_DEVID:
 		sio_data->type = it8620;
-		break;
-	case IT8790E_DEVID:
-		sio_data->type = it8790;
 		break;
 	case 0xffff:	/* No device at all */
 		goto exit;
@@ -1967,20 +1978,20 @@ static int __init it87_find(unsigned short *address,
 		goto exit;
 	}
 
-	superio_select(PME);
-	if (!(superio_inb(IT87_ACT_REG) & 0x01)) {
+	superio_select(sioaddr, PME);
+	if (!(superio_inb(sioaddr, IT87_ACT_REG) & 0x01)) {
 		pr_info("Device not activated, skipping\n");
 		goto exit;
 	}
 
-	*address = superio_inw(IT87_BASE_REG) & ~(IT87_EXTENT - 1);
+	*address = superio_inw(sioaddr, IT87_BASE_REG) & ~(IT87_EXTENT - 1);
 	if (*address == 0) {
 		pr_info("Base address not set, skipping\n");
 		goto exit;
 	}
 
 	err = 0;
-	sio_data->revision = superio_inb(DEVREV) & 0x0f;
+	sio_data->revision = superio_inb(sioaddr, DEVREV) & 0x0f;
 	pr_info("Found IT%04x%s chip at 0x%x, revision %d\n", chip_type,
 		it87_devices[sio_data->type].suffix,
 		*address, sio_data->revision);
@@ -2007,18 +2018,19 @@ static int __init it87_find(unsigned short *address,
 	/* Read GPIO config and VID value from LDN 7 (GPIO) */
 	if (sio_data->type == it87) {
 		/* The IT8705F has a different LD number for GPIO */
-		superio_select(5);
-		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+		superio_select(sioaddr, 5);
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else if (sio_data->type == it8783) {
 		int reg25, reg27, reg2a, reg2c, regef;
 
-		superio_select(GPIO);
+		superio_select(sioaddr, GPIO);
 
-		reg25 = superio_inb(IT87_SIO_GPIO1_REG);
-		reg27 = superio_inb(IT87_SIO_GPIO3_REG);
-		reg2a = superio_inb(IT87_SIO_PINX1_REG);
-		reg2c = superio_inb(IT87_SIO_PINX2_REG);
-		regef = superio_inb(IT87_SIO_SPI_REG);
+		reg25 = superio_inb(sioaddr, IT87_SIO_GPIO1_REG);
+		reg27 = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
+		reg2a = superio_inb(sioaddr, IT87_SIO_PINX1_REG);
+		reg2c = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
+		regef = superio_inb(sioaddr, IT87_SIO_SPI_REG);
 
 		/* Check if fan3 is there or not */
 		if ((reg27 & (1 << 0)) || !(reg2c & (1 << 2)))
@@ -2061,7 +2073,7 @@ static int __init it87_find(unsigned short *address,
 			 */
 			if (!(reg2c & (1 << 1))) {
 				reg2c |= (1 << 1);
-				superio_outb(IT87_SIO_PINX2_REG, reg2c);
+				superio_outb(sioaddr, IT87_SIO_PINX2_REG, reg2c);
 				pr_notice("Routing internal VCCH5V to in7.\n");
 			}
 			pr_notice("in7 routed to internal voltage divider, with external pin disabled.\n");
@@ -2073,13 +2085,14 @@ static int __init it87_find(unsigned short *address,
 		if (reg2c & (1 << 1))
 			sio_data->internal |= (1 << 1);
 
-		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else if (sio_data->type == it8603) {
 		int reg27, reg29;
 
-		superio_select(GPIO);
+		superio_select(sioaddr, GPIO);
 
-		reg27 = superio_inb(IT87_SIO_GPIO3_REG);
+		reg27 = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
 
 		/* Check if fan3 is there or not */
 		if (reg27 & (1 << 6))
@@ -2088,7 +2101,7 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_fan |= (1 << 2);
 
 		/* Check if fan2 is there or not */
-		reg29 = superio_inb(IT87_SIO_GPIO5_REG);
+		reg29 = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
 		if (reg29 & (1 << 1))
 			sio_data->skip_pwm |= (1 << 1);
 		if (reg29 & (1 << 2))
@@ -2097,38 +2110,39 @@ static int __init it87_find(unsigned short *address,
 		sio_data->skip_in |= (1 << 5); /* No VIN5 */
 		sio_data->skip_in |= (1 << 6); /* No VIN6 */
 
-		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else if (sio_data->type == it8620) {
 		int reg;
 
-		superio_select(GPIO);
+		superio_select(sioaddr, GPIO);
 
 		/* Check for pwm5 */
-		reg = superio_inb(IT87_SIO_GPIO1_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO1_REG);
 		if (reg & (1 << 6))
 			sio_data->skip_pwm |= (1 << 4);
 
 		/* Check for fan4, fan5 */
-		reg = superio_inb(IT87_SIO_GPIO2_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO2_REG);
 		if (!(reg & (1 << 5)))
 			sio_data->skip_fan |= (1 << 3);
 		if (!(reg & (1 << 4)))
 			sio_data->skip_fan |= (1 << 4);
 
 		/* Check for pwm3, fan3 */
-		reg = superio_inb(IT87_SIO_GPIO3_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
 		if (reg & (1 << 6))
 			sio_data->skip_pwm |= (1 << 2);
 		if (reg & (1 << 7))
 			sio_data->skip_fan |= (1 << 2);
 
 		/* Check for pwm4 */
-		reg = superio_inb(IT87_SIO_GPIO4_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO4_REG);
 		if (!(reg & (1 << 4)))
 			sio_data->skip_pwm |= (1 << 3);
 
 		/* Check for pwm2, fan2 */
-		reg = superio_inb(IT87_SIO_GPIO5_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
 		if (reg & (1 << 1))
 			sio_data->skip_pwm |= (1 << 1);
 		if (reg & (1 << 2))
@@ -2139,14 +2153,15 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_fan |= (1 << 5);
 		}
 
-		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else {
 		int reg;
 		bool uart6;
 
-		superio_select(GPIO);
+		superio_select(sioaddr, GPIO);
 
-		reg = superio_inb(IT87_SIO_GPIO3_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
 		if (!sio_data->skip_vid) {
 			/* We need at least 4 VID pins */
 			if (reg & 0x0f) {
@@ -2162,7 +2177,7 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_fan |= (1 << 2);
 
 		/* Check if fan2 is there or not */
-		reg = superio_inb(IT87_SIO_GPIO5_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
 		if (reg & (1 << 1))
 			sio_data->skip_pwm |= (1 << 1);
 		if (reg & (1 << 2))
@@ -2170,9 +2185,10 @@ static int __init it87_find(unsigned short *address,
 
 		if ((sio_data->type == it8718 || sio_data->type == it8720)
 		 && !(sio_data->skip_vid))
-			sio_data->vid_value = superio_inb(IT87_SIO_VID_REG);
+			sio_data->vid_value = superio_inb(sioaddr,
+							  IT87_SIO_VID_REG);
 
-		reg = superio_inb(IT87_SIO_PINX2_REG);
+		reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
 
 		uart6 = sio_data->type == it8782 && (reg & (1 << 2));
 
@@ -2192,7 +2208,7 @@ static int __init it87_find(unsigned short *address,
 		 */
 		if ((sio_data->type == it8720 || uart6) && !(reg & (1 << 1))) {
 			reg |= (1 << 1);
-			superio_outb(IT87_SIO_PINX2_REG, reg);
+			superio_outb(sioaddr, IT87_SIO_PINX2_REG, reg);
 			pr_notice("Routing internal VCCH to in7\n");
 		}
 		if (reg & (1 << 0))
@@ -2214,7 +2230,8 @@ static int __init it87_find(unsigned short *address,
 			sio_data->skip_temp |= (1 << 2);
 		}
 
-		sio_data->beep_pin = superio_inb(IT87_SIO_BEEP_PIN_REG) & 0x3f;
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	}
 	if (sio_data->beep_pin)
 		pr_info("Beeping is supported\n");
@@ -2239,13 +2256,13 @@ static int __init it87_find(unsigned short *address,
 	}
 
 exit:
-	superio_exit();
+	superio_exit(sioaddr);
 	return err;
 }
 
 static void it87_remove_files(struct device *dev)
 {
-	struct it87_data *data = platform_get_drvdata(pdev);
+	struct it87_data *data = dev_get_drvdata(dev);
 	struct it87_sio_data *sio_data = dev_get_platdata(dev);
 	int i;
 
@@ -2847,9 +2864,10 @@ static struct it87_data *it87_update_device(struct device *dev)
 	return data;
 }
 
-static int __init it87_device_add(unsigned short address,
+static int __init it87_device_add(int index, unsigned short address,
 				  const struct it87_sio_data *sio_data)
 {
+	struct platform_device *pdev;
 	struct resource res = {
 		.start	= address + IT87_EC_OFFSET,
 		.end	= address + IT87_EC_OFFSET + IT87_EC_EXTENT - 1,
@@ -2860,14 +2878,11 @@ static int __init it87_device_add(unsigned short address,
 
 	err = acpi_check_resource_conflict(&res);
 	if (err)
-		goto exit;
+		return err;
 
 	pdev = platform_device_alloc(DRVNAME, address);
-	if (!pdev) {
-		err = -ENOMEM;
-		pr_err("Device allocation failed\n");
-		goto exit;
-	}
+	if (!pdev)
+		return -ENOMEM;
 
 	err = platform_device_add_resources(pdev, &res, 1);
 	if (err) {
@@ -2888,40 +2903,58 @@ static int __init it87_device_add(unsigned short address,
 		goto exit_device_put;
 	}
 
+	it87_pdev[index] = pdev;
 	return 0;
 
 exit_device_put:
 	platform_device_put(pdev);
-exit:
 	return err;
 }
 
 static int __init sm_it87_init(void)
 {
-	int err;
-	unsigned short isa_address = 0;
+	int sioaddr[2] = { REG_2E, REG_4E };
 	struct it87_sio_data sio_data;
+	unsigned short isa_address;
+	bool found = false;
+	int i, err;
 
-	memset(&sio_data, 0, sizeof(struct it87_sio_data));
-	err = it87_find(&isa_address, &sio_data);
-	if (err)
-		return err;
 	err = platform_driver_register(&it87_driver);
 	if (err)
 		return err;
 
-	err = it87_device_add(isa_address, &sio_data);
-	if (err) {
-		platform_driver_unregister(&it87_driver);
-		return err;
+	for (i = 0; i < ARRAY_SIZE(sioaddr); i++) {
+		memset(&sio_data, 0, sizeof(struct it87_sio_data));
+		isa_address = 0;
+		err = it87_find(sioaddr[i], &isa_address, &sio_data);
+		if (err || isa_address == 0)
+			continue;
+
+		err = it87_device_add(i, isa_address, &sio_data);
+		if (err)
+			goto exit_dev_unregister;
+		found = true;
 	}
 
+	if (!found) {
+		err = -ENODEV;
+		goto exit_unregister;
+	}
 	return 0;
+
+exit_dev_unregister:
+	/* NULL check handled by platform_device_unregister */
+	platform_device_unregister(it87_pdev[0]);
+exit_unregister:
+	platform_driver_unregister(&it87_driver);
+	return err;
 }
 
 static void __exit sm_it87_exit(void)
 {
-	platform_device_unregister(pdev);
+	/* NULL check handled by platform_device_unregister */
+	platform_device_unregister(it87_pdev[1]);
+	platform_device_unregister(it87_pdev[0]);
 	platform_driver_unregister(&it87_driver);
 }
 

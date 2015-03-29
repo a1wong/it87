@@ -130,7 +130,7 @@ static inline int superio_enter(int ioreg)
 	outb(0x87, ioreg);
 	outb(0x01, ioreg);
 	outb(0x55, ioreg);
-	outb(0x55, ioreg);
+	outb(ioreg == REG_4E ? 0xaa : 0x55, ioreg);
 	return 0;
 }
 

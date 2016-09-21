@@ -492,7 +492,7 @@ struct it87_sio_data {
 struct it87_data {
 	const struct attribute_group *groups[7];
 	enum chips type;
-	u16 features;
+	u32 features;
 	u8 peci_mask;
 	u8 old_peci_mask;
 
@@ -1076,14 +1076,13 @@ static int pwm_mode(const struct it87_data *data, int nr)
 {
 	if (data->type != it8603 && nr < 3 && !(data->fan_main_ctrl & BIT(nr)))
 		return 0;				/* Full speed */
-	if (data->pwm_ctrl[nr] & 0x80) {
+	if (data->pwm_ctrl[nr] & 0x80)
 		return 2;				/* Automatic mode */
-	} else {
-		if ((data->type == it8603 || nr >= 3) &&
-		    data->pwm_duty[nr] == pwm_to_reg(data, 0xff))
-			return 0;			/* Full speed */
-		return 1;				/* Manual mode */
-	}
+	if ((data->type == it8603 || nr >= 3) &&
+	    data->pwm_duty[nr] == pwm_to_reg(data, 0xff))
+		return 0;			/* Full speed */
+
+	return 1;				/* Manual mode */
 }
 
 static ssize_t show_fan(struct device *dev, struct device_attribute *attr,
@@ -2017,6 +2016,7 @@ static struct attribute *it87_attributes_in[] = {
 	&sensor_dev_attr_in10_input.dev_attr.attr,	/* 41 */
 	&sensor_dev_attr_in11_input.dev_attr.attr,	/* 41 */
 	&sensor_dev_attr_in12_input.dev_attr.attr,	/* 41 */
+	NULL
 };
 
 static const struct attribute_group it87_group_in = {
@@ -2272,7 +2272,7 @@ static umode_t it87_auto_pwm_is_visible(struct kobject *kobj,
 			return 0;
 	}
 	if (has_old_autopwm(data)) {
-		if (a >= 9) 	/* no pwm_auto_start, pwm_auto_slope */
+		if (a >= 9)	/* no pwm_auto_start, pwm_auto_slope */
 			return 0;
 	}
 

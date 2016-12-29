@@ -11,6 +11,7 @@
  *  similar parts.  The other devices are supported by different drivers.
  *
  *  Supports: IT8603E  Super I/O chip w/LPC interface
+ *            IT8607E  Super I/O chip w/LPC interface
  *            IT8620E  Super I/O chip w/LPC interface
  *            IT8622E  Super I/O chip w/LPC interface
  *            IT8623E  Super I/O chip w/LPC interface
@@ -73,7 +74,7 @@
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
-	     it8792, it8603, it8620, it8622, it8628 };
+	     it8792, it8603, it8607, it8620, it8622, it8628 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -163,6 +164,7 @@ static inline void superio_exit(int ioreg)
 #define IT8786E_DEVID 0x8786
 #define IT8790E_DEVID 0x8790
 #define IT8603E_DEVID 0x8603
+#define IT8607E_DEVID 0x8607
 #define IT8620E_DEVID 0x8620
 #define IT8622E_DEVID 0x8622
 #define IT8623E_DEVID 0x8623
@@ -437,6 +439,14 @@ static const struct it87_devices it87_devices[] = {
 	},
 	[it8603] = {
 		.name = "it8603",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
+		  | FEAT_AVCC3 | FEAT_PWM_FREQ2,
+		.peci_mask = 0x07,
+	},
+	[it8607] = {
+		.name = "it8607",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
@@ -2448,6 +2458,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8623E_DEVID:
 		sio_data->type = it8603;
 		break;
+	case IT8607E_DEVID:
+		sio_data->type = it8607;
+		break;
 	case IT8620E_DEVID:
 		sio_data->type = it8620;
 		break;
@@ -2578,7 +2591,7 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8603) {
+	} else if (sio_data->type == it8603 || sio_data->type == it8607) {
 		int reg27, reg29;
 
 		superio_select(sioaddr, GPIO);
@@ -2598,8 +2611,10 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		if (reg29 & BIT(2))
 			sio_data->skip_fan |= BIT(1);
 
-		sio_data->skip_in |= BIT(5); /* No VIN5 */
-		sio_data->skip_in |= BIT(6); /* No VIN6 */
+		if (sio_data->type == it8603) {
+			sio_data->skip_in |= BIT(5); /* No VIN5 */
+			sio_data->skip_in |= BIT(6); /* No VIN6 */
+		}
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;

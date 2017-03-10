@@ -431,11 +431,10 @@ static const struct it87_devices it87_devices[] = {
 	[it8792] = {
 		.name = "it8792",
 		.suffix = "E",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
-		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL,
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
+		  | FEAT_PWM_FREQ2,
 		.peci_mask = 0x07,
-		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
 	[it8603] = {
 		.name = "it8603",

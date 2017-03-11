@@ -305,6 +305,8 @@ struct it87_devices {
 #define FEAT_PWM_FREQ2		BIT(16)	/* Separate pwm freq 2 */
 #define FEAT_SIX_TEMP		BIT(17)	/* Up to 6 temp sensors */
 #define FEAT_VIN3_5V		BIT(18)	/* VIN3 connected to +5V */
+#define FEAT_FOUR_FANS		BIT(19)	/* Supports four fans */
+#define FEAT_FOUR_PWM		BIT(20)	/* Supports four fan controls */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -363,7 +365,8 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "F",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
-		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL,
+		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_FOUR_FANS
+		  | FEAT_FOUR_PWM,
 		.peci_mask = 0x07,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
@@ -505,6 +508,12 @@ static const struct it87_devices it87_devices[] = {
 #define has_pwm_freq2(data)	((data)->features & FEAT_PWM_FREQ2)
 #define has_six_temp(data)	((data)->features & FEAT_SIX_TEMP)
 #define has_vin3_5v(data)	((data)->features & FEAT_VIN3_5V)
+#define has_four_fans(data)	((data)->features & (FEAT_FOUR_FANS | \
+						     FEAT_FIVE_FANS | \
+						     FEAT_SIX_FANS))
+#define has_four_pwm(data)	((data)->features & (FEAT_FOUR_PWM | \
+						     FEAT_FIVE_PWM \
+						     | FEAT_SIX_PWM))
 
 struct it87_sio_data {
 	enum chips type;
@@ -2520,8 +2529,10 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	else
 		sio_data->skip_in |= BIT(9);
 
-	if (!has_five_pwm(config))
+	if (!has_four_pwm(config))
 		sio_data->skip_pwm |= BIT(3) | BIT(4) | BIT(5);
+	else if (!has_five_pwm(config))
+		sio_data->skip_pwm |= BIT(4) | BIT(5);
 	else if (!has_six_pwm(config))
 		sio_data->skip_pwm |= BIT(5);
 
@@ -2712,6 +2723,34 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
 		if (!(reg & BIT(0)))
 			sio_data->skip_in |= BIT(9);
+
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
+	} else if (sio_data->type == it8732) {
+		int reg;
+
+		superio_select(sioaddr, GPIO);
+
+		/* Check for pwm2, fan2 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
+		if (reg & BIT(1))
+			sio_data->skip_pwm |= BIT(1);
+		if (reg & BIT(2))
+			sio_data->skip_fan |= BIT(1);
+
+		/* Check for pwm3, fan3, fan4 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
+		if (reg & BIT(6))
+			sio_data->skip_pwm |= BIT(2);
+		if (reg & BIT(7))
+			sio_data->skip_fan |= BIT(2);
+		if (reg & BIT(5))
+			sio_data->skip_fan |= BIT(3);
+
+		/* Check if AVCC is on VIN3 */
+		reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
+		if (reg & BIT(0))
+			sio_data->internal |= BIT(0);
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
@@ -2926,14 +2965,12 @@ static void it87_init_device(struct platform_device *pdev)
 	}
 
 	/* Check for additional fans */
-	if (has_five_fans(data)) {
-		if (tmp & BIT(4))
-			data->has_fan |= BIT(3); /* fan4 enabled */
-		if (tmp & BIT(5))
-			data->has_fan |= BIT(4); /* fan5 enabled */
-		if (has_six_fans(data) && (tmp & BIT(2)))
-			data->has_fan |= BIT(5); /* fan6 enabled */
-	}
+	if (has_four_fans(data) && (tmp & BIT(4)))
+		data->has_fan |= BIT(3); /* fan4 enabled */
+	if (has_five_fans(data) && (tmp & BIT(5)))
+		data->has_fan |= BIT(4); /* fan5 enabled */
+	if (!has_fan16_config(data) && has_six_fans(data) && (tmp & BIT(2)))
+		data->has_fan |= BIT(5); /* fan6 enabled */
 
 	/* Fan input pins may be used for alternative functions */
 	data->has_fan &= ~sio_data->skip_fan;

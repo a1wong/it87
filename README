@@ -276,3 +276,58 @@ temperature for thermal diodes or diode-connected thermal transistors.
 If a temperature sensor is configured for thermistors, the attribute values
 are ignored. If the thermal sensor type is Intel PECI, the temperature offset
 must be programmed to the critical CPU temperature.
+
+Preliminary support
+-------------------
+
+Support for IT8607E, IT8665E, and IT8686E is preliminary. Voltage readings,
+temperature readings, fan control, and fan speed measurements may be wrong
+and/or missing. Fan control and fan speed may be enabled and reported for
+non-existing fans. Please report any problems and inconsistencies.
+
+Reporting information for unsupported chips
+-------------------------------------------
+
+If the chip in your system is not yet supported by the driver, please provide
+the following information.
+
+First, run sensors-detect. It will tell you something like
+
+    Probing for Super-I/O at 0x2e/0x2f
+    ...
+    Trying family `ITE'...                                      Yes
+    Found unknown chip with ID 0x8665
+	(logical device 4 has address 0x290, could be sensors)
+
+With this information, run the following commands.
+
+sudo isadump -k 0x87,0x01,0x55,0x55 0x2e 0x2f 7
+sudo isadump 0x295 0x296
+
+and report the results.
+
+The addresses in the first command are from "Probing for Super-I/O at
+0x2e/0x2f". Use those addresses in the first command.
+    sudo isadump -k 0x87,0x01,0x55,0x55 0x2e 0x2f 7
+
+The addresses in the second command are from "has address 0x290".
+Add 5 and 6 to this address for the next command.
+    sudo isadump 0x295 0x296
+
+Next, force-install the driver by providing one of the already supported chips
+as forced ID. Useful IDs to test are 0x8622, 0x8628, 0x8728, and 0x8732, though
+feel free to test more IDs. For each ID, instantiate the driver as follows
+(this example is instantiating driver with ID 0x8622).
+	sudo modprobe it87 force_id=0x8622
+After entering this command, run the "sensors" command and provide the output.
+Then unload the driver with
+	sudo modprobe -r it87
+Repeat with different chip IDs, and report each result.
+
+Please also report your board type as well as voltages and fan settings from
+the BIOS. If possible, connect fans to different fan headers and let us know
+if all fans are detected and reported.
+
+This information _might_ give us enough information to add experimental support
+for the chip in question. No guarantees, though - unless a datasheet is
+available, something is likely to be wrong.

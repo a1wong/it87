@@ -16,6 +16,7 @@
  *            IT8622E  Super I/O chip w/LPC interface
  *            IT8623E  Super I/O chip w/LPC interface
  *            IT8628E  Super I/O chip w/LPC interface
+ *            IT8686E  Super I/O chip w/LPC interface
  *            IT8705F  Super I/O chip w/LPC interface
  *            IT8712F  Super I/O chip w/LPC interface
  *            IT8716F  Super I/O chip w/LPC interface
@@ -74,7 +75,7 @@
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
-	     it8792, it8603, it8607, it8620, it8622, it8628 };
+	     it8792, it8603, it8607, it8620, it8622, it8628, it8686 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -169,6 +170,7 @@ static inline void superio_exit(int ioreg)
 #define IT8622E_DEVID 0x8622
 #define IT8623E_DEVID 0x8623
 #define IT8628E_DEVID 0x8628
+#define IT8686E_DEVID 0x8686
 #define IT87_ACT_REG  0x30
 #define IT87_BASE_REG 0x60
 
@@ -212,6 +214,8 @@ static bool fix_pwm_polarity;
 #define IT87_REG_ALARM1        0x01
 #define IT87_REG_ALARM2        0x02
 #define IT87_REG_ALARM3        0x03
+
+#define IT87_REG_BANK		0x06
 
 /*
  * The IT8718F and IT8720F have the VID value in a different register, in
@@ -307,6 +311,7 @@ struct it87_devices {
 #define FEAT_VIN3_5V		BIT(18)	/* VIN3 connected to +5V */
 #define FEAT_FOUR_FANS		BIT(19)	/* Supports four fans */
 #define FEAT_FOUR_PWM		BIT(20)	/* Supports four fan controls */
+#define FEAT_BANK_SEL		BIT(21)	/* Chip has multi-bank support */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -479,7 +484,16 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP | FEAT_VIN3_5V,
+		  | FEAT_SIX_TEMP,
+		.peci_mask = 0x07,
+	},
+	[it8686] = {
+		.name = "it8686",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
+		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
+		  | FEAT_SIX_TEMP | FEAT_BANK_SEL,
 		.peci_mask = 0x07,
 	},
 };
@@ -514,6 +528,7 @@ static const struct it87_devices it87_devices[] = {
 #define has_four_pwm(data)	((data)->features & (FEAT_FOUR_PWM | \
 						     FEAT_FIVE_PWM \
 						     | FEAT_SIX_PWM))
+#define has_bank_sel(data)	((data)->features & FEAT_BANK_SEL)
 
 struct it87_sio_data {
 	enum chips type;
@@ -538,6 +553,7 @@ struct it87_data {
 	const struct attribute_group *groups[7];
 	enum chips type;
 	u32 features;
+	u8 bank;
 	u8 peci_mask;
 	u8 old_peci_mask;
 
@@ -686,15 +702,28 @@ static const unsigned int pwm_freq[8] = {
 	750000,
 };
 
-/*
- * Must be called with data->update_lock held, except during initialization.
- * We ignore the IT87 BUSY flag at this moment - it could lead to deadlocks,
- * would slow down the IT87 access and should not be necessary.
- */
-static int it87_read_value(struct it87_data *data, u8 reg)
+static int _it87_read_value(struct it87_data *data, u8 reg)
 {
 	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
 	return inb_p(data->addr + IT87_DATA_REG_OFFSET);
+}
+
+static void _it87_write_value(struct it87_data *data, u8 reg, u8 value)
+{
+	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
+	outb_p(value, data->addr + IT87_DATA_REG_OFFSET);
+}
+
+static void it87_set_bank(struct it87_data *data, u8 bank)
+{
+	if (has_bank_sel(data) && bank != data->bank) {
+		u8 breg = _it87_read_value(data, IT87_REG_BANK);
+
+		breg &= 0x1f;
+		breg |= (bank << 5);
+		data->bank = bank;
+		_it87_write_value(data, IT87_REG_BANK, breg);
+	}
 }
 
 /*
@@ -702,10 +731,21 @@ static int it87_read_value(struct it87_data *data, u8 reg)
  * We ignore the IT87 BUSY flag at this moment - it could lead to deadlocks,
  * would slow down the IT87 access and should not be necessary.
  */
-static void it87_write_value(struct it87_data *data, u8 reg, u8 value)
+static int it87_read_value(struct it87_data *data, u16 reg)
 {
-	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
-	outb_p(value, data->addr + IT87_DATA_REG_OFFSET);
+	it87_set_bank(data, reg >> 8);
+	return _it87_read_value(data, reg & 0xff);
+}
+
+/*
+ * Must be called with data->update_lock held, except during initialization.
+ * We ignore the IT87 BUSY flag at this moment - it could lead to deadlocks,
+ * would slow down the IT87 access and should not be necessary.
+ */
+static void it87_write_value(struct it87_data *data, u16 reg, u8 value)
+{
+	it87_set_bank(data, reg >> 8);
+	_it87_write_value(data, reg & 0xff, value);
 }
 
 static void it87_update_pwm_ctrl(struct it87_data *data, int nr)
@@ -2494,6 +2534,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8628E_DEVID:
 		sio_data->type = it8628;
 		break;
+	case IT8686E_DEVID:
+		sio_data->type = it8686;
+		break;
 	case 0xffff:	/* No device at all */
 		goto exit;
 	default:
@@ -2644,7 +2687,8 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8620 || sio_data->type == it8628) {
+	} else if (sio_data->type == it8620 || sio_data->type == it8628 ||
+		   sio_data->type == it8686) {
 		int reg;
 
 		superio_select(sioaddr, GPIO);
@@ -3081,6 +3125,8 @@ static int it87_probe(struct platform_device *pdev)
 	data->features = it87_devices[sio_data->type].features;
 	data->peci_mask = it87_devices[sio_data->type].peci_mask;
 	data->old_peci_mask = it87_devices[sio_data->type].old_peci_mask;
+	data->bank = 0xff;
+
 	/*
 	 * IT8705F Datasheet 0.4.1, 3h == Version G.
 	 * IT8712F Datasheet 0.9.1, section 8.3.5 indicates 8h == Version J.

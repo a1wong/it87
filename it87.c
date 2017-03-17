@@ -16,6 +16,7 @@
  *            IT8622E  Super I/O chip w/LPC interface
  *            IT8623E  Super I/O chip w/LPC interface
  *            IT8628E  Super I/O chip w/LPC interface
+ *            IT8665E  Super I/O chip w/LPC interface
  *            IT8686E  Super I/O chip w/LPC interface
  *            IT8705F  Super I/O chip w/LPC interface
  *            IT8712F  Super I/O chip w/LPC interface
@@ -75,7 +76,8 @@
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
-	     it8792, it8603, it8607, it8620, it8622, it8628, it8686 };
+	     it8792, it8603, it8607, it8620, it8622, it8628, it8665,
+	     it8686 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -170,6 +172,7 @@ static inline void superio_exit(int ioreg)
 #define IT8622E_DEVID 0x8622
 #define IT8623E_DEVID 0x8623
 #define IT8628E_DEVID 0x8628
+#define IT8665E_DEVID 0x8665
 #define IT8686E_DEVID 0x8686
 #define IT87_ACT_REG  0x30
 #define IT87_BASE_REG 0x60
@@ -180,8 +183,10 @@ static inline void superio_exit(int ioreg)
 #define IT87_SIO_GPIO3_REG	0x27
 #define IT87_SIO_GPIO4_REG	0x28
 #define IT87_SIO_GPIO5_REG	0x29
+#define IT87_SIO_GPIO9_REG	0xd3
 #define IT87_SIO_PINX1_REG	0x2a	/* Pin selection */
 #define IT87_SIO_PINX2_REG	0x2c	/* Pin selection */
+#define IT87_SIO_PINX4_REG	0x2d	/* Pin selection */
 #define IT87_SIO_SPI_REG	0xef	/* SPI function pin select */
 #define IT87_SIO_VID_REG	0xfc	/* VID value */
 #define IT87_SIO_BEEP_PIN_REG	0xf6	/* Beep pin mapping */
@@ -486,6 +491,15 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
 		  | FEAT_SIX_TEMP | FEAT_SCALING,
+		.peci_mask = 0x07,
+	},
+	[it8665] = {
+		.name = "it8665",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
+		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
+		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
 		.peci_mask = 0x07,
 	},
 	[it8686] = {
@@ -2536,6 +2550,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8628E_DEVID:
 		sio_data->type = it8628;
 		break;
+	case IT8665E_DEVID:
+		sio_data->type = it8665;
+		break;
 	case IT8686E_DEVID:
 		sio_data->type = it8686;
 		break;
@@ -2805,6 +2822,48 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
+	} else if (sio_data->type == it8665) {
+		int reg;
+
+		superio_select(sioaddr, GPIO);
+
+		/* Check for pwm2 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
+		if (reg & BIT(1))
+			sio_data->skip_pwm |= BIT(1);
+
+		/* Check for fan2 */
+		reg = superio_inb(sioaddr, IT87_SIO_PINX4_REG);
+		if (reg & BIT(4))
+			sio_data->skip_fan |= BIT(1);
+
+		/* Check for pwm3, fan3 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
+		if (reg & BIT(6))
+			sio_data->skip_pwm |= BIT(2);
+		if (reg & BIT(7))
+			sio_data->skip_fan |= BIT(2);
+
+		/* Check for pwm5, fan5 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO2_REG);
+		if (reg & BIT(5))
+			sio_data->skip_pwm |= BIT(4);
+		if (!(reg & BIT(4)))
+			sio_data->skip_fan |= BIT(4);
+
+		/* Check for pwm4, fan4, pwm6, fan6 */
+		reg = superio_inb(sioaddr, IT87_SIO_GPIO9_REG);
+		if (reg & BIT(2))
+			sio_data->skip_pwm |= BIT(3);
+		if (reg & BIT(3))
+			sio_data->skip_fan |= BIT(3);
+		if (reg & BIT(0))
+			sio_data->skip_pwm |= BIT(5);
+		if (reg & BIT(1))
+			sio_data->skip_fan |= BIT(5);
+
+		sio_data->beep_pin = superio_inb(sioaddr,
+						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
 	} else {
 		int reg;
 		bool uart6;
@@ -3020,20 +3079,39 @@ static void it87_init_device(struct platform_device *pdev)
 		data->has_fan |= BIT(3); /* fan4 enabled */
 	if (has_five_fans(data) && (tmp & BIT(5)))
 		data->has_fan |= BIT(4); /* fan5 enabled */
-	if (!has_fan16_config(data) && has_six_fans(data) && (tmp & BIT(2)))
-		data->has_fan |= BIT(5); /* fan6 enabled */
+	if (has_six_fans(data)) {
+		switch (data->type) {
+		case it8620:
+		case it8628:
+		case it8686:
+			if (tmp & BIT(2))
+				data->has_fan |= BIT(5); /* fan6 enabled */
+			break;
+		case it8665:
+			tmp = it87_read_value(data, IT87_REG_FAN_DIV);
+			if (tmp & BIT(3))
+				data->has_fan |= BIT(5); /* fan6 enabled */
+			break;
+		default:
+			break;
+		}
+	}
 
 	/* Fan input pins may be used for alternative functions */
 	data->has_fan &= ~sio_data->skip_fan;
 
-	/* Check if pwm5, pwm6 are enabled */
+	/* Check if pwm6 is enabled */
 	if (has_six_pwm(data)) {
-		/* The following code may be IT8620E specific */
-		tmp = it87_read_value(data, IT87_REG_FAN_DIV);
-		if ((tmp & 0xc0) == 0xc0)
-			sio_data->skip_pwm |= BIT(4);
-		if (!(tmp & BIT(3)))
-			sio_data->skip_pwm |= BIT(5);
+		switch (data->type) {
+		case it8620:
+		case it8686:
+			tmp = it87_read_value(data, IT87_REG_FAN_DIV);
+			if (!(tmp & BIT(3)))
+				sio_data->skip_pwm |= BIT(5);
+			break;
+		default:
+			break;
+		}
 	}
 
 	/* Start monitoring */

@@ -312,6 +312,7 @@ struct it87_devices {
 #define FEAT_FOUR_FANS		BIT(19)	/* Supports four fans */
 #define FEAT_FOUR_PWM		BIT(20)	/* Supports four fan controls */
 #define FEAT_BANK_SEL		BIT(21)	/* Chip has multi-bank support */
+#define FEAT_SCALING		BIT(22)	/* Internal voltage scaling */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -353,7 +354,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
 		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS | FEAT_IN7_INTERNAL
-		  | FEAT_PWM_FREQ2,
+		  | FEAT_PWM_FREQ2 | FEAT_SCALING,
 		.peci_mask = 0x05,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
@@ -362,7 +363,7 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "F",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
-		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2,
+		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2 | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8732] = {
@@ -380,7 +381,7 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_PWM_FREQ2,
+		  | FEAT_PWM_FREQ2 | FEAT_SCALING,
 				/* PECI: guesswork */
 				/* 12mV ADC (OHM) */
 				/* 16 bit fans (OHM) */
@@ -392,7 +393,7 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_PWM_FREQ2,
+		  | FEAT_PWM_FREQ2 | FEAT_SCALING,
 				/* PECI (coreboot) */
 				/* 12mV ADC (HWSensors4, OHM) */
 				/* 16 bit fans (HWSensors4, OHM) */
@@ -431,17 +432,17 @@ static const struct it87_devices it87_devices[] = {
 	[it8790] = {
 		.name = "it8790",
 		.suffix = "E",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_PWM_FREQ2,
+		.features = FEAT_NEWER_AUTOPWM | FEAT_10_9MV_ADC | FEAT_SCALING
+		  | FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
+		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2,
 		.peci_mask = 0x07,
 	},
 	[it8792] = {
 		.name = "it8792",
 		.suffix = "E",
-		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_PWM_FREQ2,
+		.features = FEAT_NEWER_AUTOPWM | FEAT_10_9MV_ADC | FEAT_SCALING
+		  | FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
+		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2,
 		.peci_mask = 0x07,
 	},
 	[it8603] = {
@@ -449,7 +450,7 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_AVCC3 | FEAT_PWM_FREQ2,
+		  | FEAT_AVCC3 | FEAT_PWM_FREQ2 | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8607] = {
@@ -457,7 +458,7 @@ static const struct it87_devices it87_devices[] = {
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
-		  | FEAT_AVCC3 | FEAT_PWM_FREQ2,
+		  | FEAT_AVCC3 | FEAT_PWM_FREQ2 | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8620] = {
@@ -466,7 +467,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP | FEAT_VIN3_5V,
+		  | FEAT_SIX_TEMP | FEAT_VIN3_5V | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8622] = {
@@ -475,7 +476,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
 		  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
-		  | FEAT_AVCC3 | FEAT_VIN3_5V,
+		  | FEAT_AVCC3 | FEAT_VIN3_5V | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8628] = {
@@ -484,7 +485,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP,
+		  | FEAT_SIX_TEMP | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 	[it8686] = {
@@ -493,7 +494,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP | FEAT_BANK_SEL,
+		  | FEAT_SIX_TEMP | FEAT_BANK_SEL | FEAT_SCALING,
 		.peci_mask = 0x07,
 	},
 };
@@ -529,6 +530,7 @@ static const struct it87_devices it87_devices[] = {
 						     FEAT_FIVE_PWM \
 						     | FEAT_SIX_PWM))
 #define has_bank_sel(data)	((data)->features & FEAT_BANK_SEL)
+#define has_scaling(data)	((data)->features & FEAT_SCALING)
 
 struct it87_sio_data {
 	enum chips type;
@@ -3163,7 +3165,7 @@ static int it87_probe(struct platform_device *pdev)
 	enable_pwm_interface = it87_check_pwm(dev);
 
 	/* Starting with IT8721F, we handle scaling of internal voltages */
-	if (has_12mv_adc(data)) {
+	if (has_scaling(data)) {
 		if (sio_data->internal & BIT(0))
 			data->in_scaled |= BIT(3);	/* in3 is AVCC */
 		if (sio_data->internal & BIT(1))

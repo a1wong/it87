@@ -503,14 +503,14 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP | FEAT_SCALING,
+		  | FEAT_SIX_TEMP | FEAT_SCALING | FEAT_AVCC3,
 		.peci_mask = 0x07,
 	},
 	[it8655] = {
 		.name = "it8655",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_AVCC3
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_BANK_SEL,
 		.peci_mask = 0x07,
 	},
@@ -518,7 +518,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8665",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_AVCC3
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
 		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
 		.peci_mask = 0x07,
@@ -529,7 +529,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_SIX_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
-		  | FEAT_SIX_TEMP | FEAT_BANK_SEL | FEAT_SCALING,
+		  | FEAT_SIX_TEMP | FEAT_BANK_SEL | FEAT_SCALING | FEAT_AVCC3,
 		.peci_mask = 0x07,
 	},
 };
@@ -2159,9 +2159,9 @@ static struct attribute *it87_attributes_in[] = {
 
 	&sensor_dev_attr_in8_input.dev_attr.attr,	/* 40 */
 	&sensor_dev_attr_in9_input.dev_attr.attr,	/* 41 */
-	&sensor_dev_attr_in10_input.dev_attr.attr,	/* 41 */
-	&sensor_dev_attr_in11_input.dev_attr.attr,	/* 41 */
-	&sensor_dev_attr_in12_input.dev_attr.attr,	/* 41 */
+	&sensor_dev_attr_in10_input.dev_attr.attr,	/* 42 */
+	&sensor_dev_attr_in11_input.dev_attr.attr,	/* 43 */
+	&sensor_dev_attr_in12_input.dev_attr.attr,	/* 44 */
 	NULL
 };
 
@@ -2781,10 +2781,14 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		/* Check if AVCC is on VIN3 */
 		reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
-		if (reg & BIT(0))
-			sio_data->internal |= BIT(0);
-		else
+		if (reg & BIT(0)) {
+			/* For it8686, the bit just enables AVCC3 */
+			if (sio_data->type != it8686)
+				sio_data->internal |= BIT(0);
+		} else {
+			sio_data->internal &= ~BIT(3);
 			sio_data->skip_in |= BIT(9);
+		}
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;

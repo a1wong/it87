@@ -75,6 +75,9 @@
 
 #define DRVNAME "it87"
 
+/* Necessary API not (yet) exported in upstream kernel */
+/* #define __IT87_USE_ACPI_MUTEX */
+
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
 	     it8792, it8603, it8607, it8620, it8622, it8628, it8655, it8665,
@@ -85,6 +88,11 @@ module_param(force_id, ushort, 0);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
 static struct platform_device *it87_pdev[2];
+static bool it87_sio4e_broken;
+#ifdef __IT87_USE_ACPI_MUTEX
+static acpi_handle it87_acpi_sio_handle;
+static char *it87_acpi_sio_mutex;
+#endif
 
 #define	REG_2E	0x2e	/* The register to read/write */
 #define	REG_4E	0x4e	/* Secondary register to read/write */
@@ -98,10 +106,28 @@ static struct platform_device *it87_pdev[2];
 #define	DEVID	0x20	/* Register: Device ID */
 #define	DEVREV	0x22	/* Register: Device Revision */
 
+static inline void __superio_enter(int ioreg)
+{
+	outb(0x87, ioreg);
+	outb(0x01, ioreg);
+	outb(0x55, ioreg);
+	outb(ioreg == REG_4E ? 0xaa : 0x55, ioreg);
+}
+
 static inline int superio_inb(int ioreg, int reg)
 {
+	int val;
+
 	outb(reg, ioreg);
-	return inb(ioreg + 1);
+	val = inb(ioreg + 1);
+	if (it87_sio4e_broken && ioreg == 0x4e && val == 0xff) {
+		__superio_enter(ioreg);
+		outb(reg, ioreg);
+		val = inb(ioreg + 1);
+		pr_warn("Retry access 0x4e:0x%x -> 0x%x\n", reg, val);
+	}
+
+	return val;
 }
 
 static inline void superio_outb(int ioreg, int reg, int val)
@@ -112,13 +138,7 @@ static inline void superio_outb(int ioreg, int reg, int val)
 
 static int superio_inw(int ioreg, int reg)
 {
-	int val;
-
-	outb(reg++, ioreg);
-	val = inb(ioreg + 1) << 8;
-	outb(reg, ioreg);
-	val |= inb(ioreg + 1);
-	return val;
+	return (superio_inb(ioreg, reg) << 8) | superio_inb(ioreg, reg + 1);
 }
 
 static inline void superio_select(int ioreg, int ldn)
@@ -129,24 +149,45 @@ static inline void superio_select(int ioreg, int ldn)
 
 static inline int superio_enter(int ioreg)
 {
+#ifdef __IT87_USE_ACPI_MUTEX
+	if (it87_acpi_sio_mutex) {
+		acpi_status status;
+
+		status = acpi_acquire_mutex(NULL, it87_acpi_sio_mutex, 0x10);
+		if (ACPI_FAILURE(status)) {
+			pr_err("Failed to acquire ACPI mutex\n");
+			return -EBUSY;
+		}
+	}
+#endif
 	/*
 	 * Try to reserve ioreg and ioreg + 1 for exclusive access.
 	 */
 	if (!request_muxed_region(ioreg, 2, DRVNAME))
-		return -EBUSY;
+		goto error;
 
-	outb(0x87, ioreg);
-	outb(0x01, ioreg);
-	outb(0x55, ioreg);
-	outb(ioreg == REG_4E ? 0xaa : 0x55, ioreg);
+	__superio_enter(ioreg);
 	return 0;
+
+error:
+#ifdef __IT87_USE_ACPI_MUTEX
+	if (it87_acpi_sio_mutex)
+		acpi_release_mutex(it87_acpi_sio_handle, NULL);
+#endif
+	return -EBUSY;
 }
 
 static inline void superio_exit(int ioreg)
 {
-	outb(0x02, ioreg);
-	outb(0x02, ioreg + 1);
+	if (!it87_sio4e_broken || ioreg != 0x4e) {
+		outb(0x02, ioreg);
+		outb(0x02, ioreg + 1);
+	}
 	release_region(ioreg, 2);
+#ifdef __IT87_USE_ACPI_MUTEX
+	if (it87_acpi_sio_mutex)
+		acpi_release_mutex(it87_acpi_sio_handle, NULL);
+#endif
 }
 
 /* Logical device 4 registers */
@@ -258,6 +299,8 @@ static const u8 IT87_REG_FANX_MIN_8665[] =
 
 static const u8 IT87_REG_TEMP_OFFSET[] = { 0x56, 0x57, 0x59, 0x5a, 0x91, 0x90 };
 
+static const u8 IT87_REG_TEMP_OFFSET_8686[] = { 0x56, 0x57, 0x59, 0x92, 0x91, 0x90 };
+
 #define IT87_REG_FAN_MAIN_CTRL 0x13
 #define IT87_REG_FAN_CTL       0x14
 
@@ -277,6 +320,11 @@ static const u8 IT87_REG_VIN[]	= { 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26,
 static const u8 IT87_REG_TEMP_HIGH[] =	{ 0x40, 0x42, 0x44, 0x46, 0xb4, 0xb6 };
 static const u8 IT87_REG_TEMP_LOW[] =	{ 0x41, 0x43, 0x45, 0x47, 0xb5, 0xb7 };
 
+static const u8 IT87_REG_TEMP_HIGH_8686[] =
+					{ 0x40, 0x42, 0x44, 0xb4, 0xb6, 0xb8 };
+static const u8 IT87_REG_TEMP_LOW_8686[] =
+					{ 0x41, 0x43, 0x45, 0xb5, 0xb7, 0xb9 };
+
 #define IT87_REG_VIN_ENABLE    0x50
 #define IT87_REG_TEMP_ENABLE   0x51
 #define IT87_REG_TEMP_EXTRA    0x55
@@ -290,6 +338,9 @@ static const u8 IT87_REG_AUTO_BASE[] = { 0x60, 0x68, 0x70, 0x78, 0xa0, 0xa8 };
 #define IT87_REG_AUTO_PWM(nr, i)  (IT87_REG_AUTO_BASE[nr] + 5 + (i))
 
 #define IT87_REG_TEMP456_ENABLE	0x77
+
+static const u16 IT87_REG_TEMP_SRC1[] =	{ 0x21d, 0x21e, 0x21f };
+#define IT87_REG_TEMP_SRC2	0x23d
 
 #define NUM_VIN			ARRAY_SIZE(IT87_REG_VIN)
 #define NUM_VIN_LIMIT		8
@@ -636,6 +687,10 @@ struct it87_data {
 
 	const u8 *REG_PWM;
 
+	const u8 *REG_TEMP_OFFSET;
+	const u8 *REG_TEMP_LOW;
+	const u8 *REG_TEMP_HIGH;
+
 	unsigned short addr;
 	const char *name;
 	struct mutex update_lock;
@@ -941,12 +996,12 @@ static struct it87_data *it87_update_device(struct device *dev)
 			if (has_temp_offset(data))
 				data->temp[i][3] =
 				  it87_read_value(data,
-						  IT87_REG_TEMP_OFFSET[i]);
+						  data->REG_TEMP_OFFSET[i]);
 
 			data->temp[i][1] =
-				it87_read_value(data, IT87_REG_TEMP_LOW[i]);
+				it87_read_value(data, data->REG_TEMP_LOW[i]);
 			data->temp[i][2] =
-				it87_read_value(data, IT87_REG_TEMP_HIGH[i]);
+				it87_read_value(data, data->REG_TEMP_HIGH[i]);
 		}
 
 		/* Newer chips don't have clock dividers */
@@ -1113,10 +1168,10 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *attr,
 	switch (index) {
 	default:
 	case 1:
-		reg = IT87_REG_TEMP_LOW[nr];
+		reg = data->REG_TEMP_LOW[nr];
 		break;
 	case 2:
-		reg = IT87_REG_TEMP_HIGH[nr];
+		reg = data->REG_TEMP_HIGH[nr];
 		break;
 	case 3:
 		regval = it87_read_value(data, IT87_REG_BEEP_ENABLE);
@@ -1125,7 +1180,7 @@ static ssize_t set_temp(struct device *dev, struct device_attribute *attr,
 			it87_write_value(data, IT87_REG_BEEP_ENABLE, regval);
 		}
 		data->valid = 0;
-		reg = IT87_REG_TEMP_OFFSET[nr];
+		reg = data->REG_TEMP_OFFSET[nr];
 		break;
 	}
 
@@ -1178,23 +1233,87 @@ static SENSOR_DEVICE_ATTR_2(temp6_max, S_IRUGO | S_IWUSR, show_temp, set_temp,
 static SENSOR_DEVICE_ATTR_2(temp6_offset, S_IRUGO | S_IWUSR, show_temp,
 			    set_temp, 5, 3);
 
+static int get_temp_type(struct it87_data *data, int index)
+{
+	u8 reg, extra;
+	int type = 0;
+
+	if (has_bank_sel(data)) {
+		int s1reg = IT87_REG_TEMP_SRC1[index/2] >> ((index % 2) * 4);
+		u8 src1, src2;
+
+		src1 = (it87_read_value(data, s1reg) >> ((index % 2) * 4)) & 0x0f;
+		src2 = it87_read_value(data, IT87_REG_TEMP_SRC2);
+
+		switch (data->type) {
+		case it8686:
+			switch (src1) {
+			case 0:
+				if (index >= 3)
+					return 4;
+				break;
+			case 1:
+				if (index == 1 || index == 2 ||
+					  index == 4 || index == 5)
+					return 6;
+				break;
+			case 2:
+				if (index == 2 || index == 6)
+					return 5;
+				break;
+			default:
+				break;
+			}
+			break;
+		case it8655:
+		case it8665:
+			if (src1 < 3) {
+				index = src1;
+				break;
+			}
+			switch(src1) {
+			case 3:
+				type = (src2 & BIT(index)) ? 6 : 5;
+				break;
+			case 4 ... 8:
+				type = (src2 & BIT(index)) ? 4 : 6;
+				break;
+			case 9:
+				type = (src2 & BIT(index)) ? 5 : 0;
+				break;
+			default:
+				break;
+			}
+			return type;
+		default:
+			return 0;
+		}
+	}
+	if (index >= 3)
+		return 0;
+
+	reg = it87_read_value(data, IT87_REG_TEMP_ENABLE);
+	extra = it87_read_value(data, IT87_REG_TEMP_EXTRA);
+
+	if ((has_temp_peci(data, index) && (reg >> 6 == index + 1)) ||
+	    (has_temp_old_peci(data, index) && (extra & 0x80)))
+		type = 6;		/* Intel PECI */
+	if (reg & BIT(index))
+		type = 3;		/* thermal diode */
+	else if (reg & BIT(index + 3))
+		type = 4;		/* thermistor */
+
+	return type;
+}
+
 static ssize_t show_temp_type(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
 	struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
-	int nr = sensor_attr->index;
 	struct it87_data *data = it87_update_device(dev);
-	u8 reg = data->sensor;	    /* In case value is updated while used */
-	u8 extra = data->extra;
+	int type = get_temp_type(data, sensor_attr->index);
 
-	if ((has_temp_peci(data, nr) && (reg >> 6 == nr + 1)) ||
-	    (has_temp_old_peci(data, nr) && (extra & 0x80)))
-		return sprintf(buf, "6\n");  /* Intel PECI */
-	if (reg & (1 << nr))
-		return sprintf(buf, "3\n");  /* thermal diode */
-	if (reg & (8 << nr))
-		return sprintf(buf, "4\n");  /* thermistor */
-	return sprintf(buf, "0\n");      /* disabled */
+	return sprintf(buf, "%d\n", type);
 }
 
 static ssize_t set_temp_type(struct device *dev, struct device_attribute *attr,
@@ -2251,6 +2370,16 @@ static umode_t it87_temp_is_visible(struct kobject *kobj,
 	if (a && i >= data->num_temp_limit)
 		return 0;
 
+	if (a == 3) {
+		int type = get_temp_type(data, i);
+
+		if (type == 0)
+			return 0;
+		if (has_bank_sel(data))
+			return 0444;
+		return attr->mode;
+	}
+
 	if (a == 5 && !has_temp_offset(data))
 		return 0;
 
@@ -2264,7 +2393,7 @@ static struct attribute *it87_attributes_temp[] = {
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
 	&sensor_dev_attr_temp1_max.dev_attr.attr,
 	&sensor_dev_attr_temp1_min.dev_attr.attr,
-	&sensor_dev_attr_temp1_type.dev_attr.attr,
+	&sensor_dev_attr_temp1_type.dev_attr.attr,	/* 3 */
 	&sensor_dev_attr_temp1_alarm.dev_attr.attr,
 	&sensor_dev_attr_temp1_offset.dev_attr.attr,	/* 5 */
 	&sensor_dev_attr_temp1_beep.dev_attr.attr,	/* 6 */
@@ -2292,6 +2421,7 @@ static struct attribute *it87_attributes_temp[] = {
 	&sensor_dev_attr_temp4_alarm.dev_attr.attr,
 	&sensor_dev_attr_temp4_offset.dev_attr.attr,
 	&sensor_dev_attr_temp4_beep.dev_attr.attr,
+
 	&sensor_dev_attr_temp5_input.dev_attr.attr,
 	&sensor_dev_attr_temp5_max.dev_attr.attr,
 	&sensor_dev_attr_temp5_min.dev_attr.attr,
@@ -2299,6 +2429,7 @@ static struct attribute *it87_attributes_temp[] = {
 	&sensor_dev_attr_temp5_alarm.dev_attr.attr,
 	&sensor_dev_attr_temp5_offset.dev_attr.attr,
 	&sensor_dev_attr_temp5_beep.dev_attr.attr,
+
 	&sensor_dev_attr_temp6_input.dev_attr.attr,
 	&sensor_dev_attr_temp6_max.dev_attr.attr,
 	&sensor_dev_attr_temp6_min.dev_attr.attr,
@@ -2580,7 +2711,6 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 {
 	int err;
 	u16 chip_type;
-	const char *board_vendor, *board_name;
 	const struct it87_devices *config;
 
 	err = superio_enter(sioaddr);
@@ -3110,25 +3240,6 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	if (sio_data->beep_pin)
 		pr_info("Beeping is supported\n");
 
-	/* Disable specific features based on DMI strings */
-	board_vendor = dmi_get_system_info(DMI_BOARD_VENDOR);
-	board_name = dmi_get_system_info(DMI_BOARD_NAME);
-	if (board_vendor && board_name) {
-		if (strcmp(board_vendor, "nVIDIA") == 0 &&
-		    strcmp(board_name, "FN68PT") == 0) {
-			/*
-			 * On the Shuttle SN68PT, FAN_CTL2 is apparently not
-			 * connected to a fan, but to something else. One user
-			 * has reported instant system power-off when changing
-			 * the PWM2 duty cycle, so we disable it.
-			 * I use the board name string as the trigger in case
-			 * the same board is ever used in other systems.
-			 */
-			pr_info("Disabling pwm2 due to hardware constraints\n");
-			sio_data->skip_pwm = BIT(1);
-		}
-	}
-
 exit:
 	superio_exit(sioaddr);
 	return err;
@@ -3144,6 +3255,16 @@ static void it87_init_device(struct platform_device *pdev)
 
 	/* Initialize chip specific register pointers */
 	switch (data->type) {
+	case it8686:
+		data->REG_FAN = IT87_REG_FAN;
+		data->REG_FANX = IT87_REG_FANX;
+		data->REG_FAN_MIN = IT87_REG_FAN_MIN;
+		data->REG_FANX_MIN = IT87_REG_FANX_MIN;
+		data->REG_PWM = IT87_REG_PWM;
+		data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET_8686;
+		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW_8686;
+		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH_8686;
+		break;
 	case it8655:
 	case it8665:
 		data->REG_FAN = IT87_REG_FAN_8665;
@@ -3151,6 +3272,9 @@ static void it87_init_device(struct platform_device *pdev)
 		data->REG_FAN_MIN = IT87_REG_FAN_MIN_8665;
 		data->REG_FANX_MIN = IT87_REG_FANX_MIN_8665;
 		data->REG_PWM = IT87_REG_PWM_8665;
+		data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET;
+		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW;
+		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
 		break;
 	case it8622:
 		data->REG_FAN = IT87_REG_FAN;
@@ -3158,6 +3282,9 @@ static void it87_init_device(struct platform_device *pdev)
 		data->REG_FAN_MIN = IT87_REG_FAN_MIN;
 		data->REG_FANX_MIN = IT87_REG_FANX_MIN;
 		data->REG_PWM = IT87_REG_PWM_8665;
+		data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET;
+		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW;
+		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
 		break;
 	default:
 		data->REG_FAN = IT87_REG_FAN;
@@ -3165,6 +3292,9 @@ static void it87_init_device(struct platform_device *pdev)
 		data->REG_FAN_MIN = IT87_REG_FAN_MIN;
 		data->REG_FANX_MIN = IT87_REG_FANX_MIN;
 		data->REG_PWM = IT87_REG_PWM;
+		data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET;
+		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW;
+		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
 		break;
 	}
 
@@ -3200,9 +3330,9 @@ static void it87_init_device(struct platform_device *pdev)
 			it87_write_value(data, IT87_REG_VIN_MIN(i), 0);
 	}
 	for (i = 0; i < data->num_temp_limit; i++) {
-		tmp = it87_read_value(data, IT87_REG_TEMP_HIGH[i]);
+		tmp = it87_read_value(data, data->REG_TEMP_HIGH[i]);
 		if (tmp == 0xff)
-			it87_write_value(data, IT87_REG_TEMP_HIGH[i], 127);
+			it87_write_value(data, data->REG_TEMP_HIGH[i], 127);
 	}
 
 	/*
@@ -3546,13 +3676,91 @@ exit_device_put:
 	return err;
 }
 
+struct it87_dmi_data {
+	bool sio4e_broken;	/* SIO accesses @ 0x4e are broken	*/
+	char *sio_mutex;	/* SIO ACPI mutex			*/
+	u8 skip_pwm;		/* pwm channels to skip for this board	*/
+};
+
+/*
+ * On Gigabyte AB350 boards, accesses to the Super-IO chip
+ * at address 0x4e/0x4f can result in a system hang.
+ * Accesses to address 0x2e/0x2f need to be mutex protected.
+ */
+static struct it87_dmi_data gigabyte_ab350_gaming = {
+	.sio4e_broken = true,
+	.sio_mutex = "\\_SB.PCI0.SBRG.SIO1.MUT0",
+};
+
+/*
+ * On the Shuttle SN68PT, FAN_CTL2 is apparently not
+ * connected to a fan, but to something else. One user
+ * has reported instant system power-off when changing
+ * the PWM2 duty cycle, so we disable it.
+ * I use the board name string as the trigger in case
+ * the same board is ever used in other systems.
+ */
+static struct it87_dmi_data nvidia_fn68pt = {
+	.skip_pwm = BIT(1),
+};
+
+static const struct dmi_system_id it87_dmi_table[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AB350-Gaming-CF"),
+		},
+		.driver_data = &gigabyte_ab350_gaming,
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AB350-Gaming 3-CF"),
+		},
+		.driver_data = &gigabyte_ab350_gaming,
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "nVIDIA"),
+			DMI_MATCH(DMI_BOARD_NAME, "FN68PT"),
+		},
+		.driver_data = &nvidia_fn68pt,
+	},
+	{ }
+};
+
 static int __init sm_it87_init(void)
 {
+	const struct dmi_system_id *dmi = dmi_first_match(it87_dmi_table);
+	struct it87_dmi_data *dmi_data = NULL;
 	int sioaddr[2] = { REG_2E, REG_4E };
 	struct it87_sio_data sio_data;
 	unsigned short isa_address;
 	bool found = false;
 	int i, err;
+
+	if (dmi)
+		dmi_data = dmi->driver_data;
+
+	if (dmi_data) {
+		it87_sio4e_broken = dmi_data->sio4e_broken;
+#ifdef __IT87_USE_ACPI_MUTEX
+		if (dmi_data->sio_mutex) {
+			static acpi_status status;
+
+			status = acpi_get_handle(NULL, dmi_data->sio_mutex,
+						 &it87_acpi_sio_handle);
+			if (ACPI_SUCCESS(status)) {
+				it87_acpi_sio_mutex = dmi_data->sio_mutex;
+				pr_debug("Found ACPI SIO mutex %s\n",
+					 dmi_data->sio_mutex);
+			} else {
+				pr_warn("ACPI SIO mutex %s not found\n",
+					dmi_data->sio_mutex);
+			}
+		}
+#endif /* __IT87_USE_ACPI_MUTEX */
+	}
 
 	err = platform_driver_register(&it87_driver);
 	if (err)
@@ -3565,6 +3773,8 @@ static int __init sm_it87_init(void)
 		if (err || isa_address == 0)
 			continue;
 
+		if (dmi_data)
+			sio_data.skip_pwm |= dmi_data->skip_pwm;
 		err = it87_device_add(i, isa_address, &sio_data);
 		if (err)
 			goto exit_dev_unregister;

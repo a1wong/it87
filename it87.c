@@ -383,6 +383,7 @@ struct it87_devices {
 #define FEAT_BANK_SEL		BIT(21)	/* Chip has multi-bank support */
 #define FEAT_SCALING		BIT(22)	/* Internal voltage scaling */
 #define FEAT_FANCTL_ONOFF	BIT(23)	/* chip has FAN_CTL ON/OFF */
+#define FEAT_11MV_ADC		BIT(24)
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -652,6 +653,7 @@ static const struct it87_devices it87_devices[] = {
 #define has_bank_sel(data)	((data)->features & FEAT_BANK_SEL)
 #define has_scaling(data)	((data)->features & FEAT_SCALING)
 #define has_fanctl_onoff(data)	((data)->features & FEAT_FANCTL_ONOFF)
+#define has_11mv_adc(data)	((data)->features & FEAT_11MV_ADC)
 
 struct it87_sio_data {
 	enum chips type;
@@ -746,6 +748,8 @@ static int adc_lsb(const struct it87_data *data, int nr)
 		lsb = 120;
 	else if (has_10_9mv_adc(data))
 		lsb = 109;
+	else if (has_11mv_adc(data))
+		lsb = 110;
 	else
 		lsb = 160;
 	if (data->in_scaled & BIT(nr))
@@ -2259,7 +2263,8 @@ static ssize_t show_label(struct device *dev, struct device_attribute *attr,
 
 	if (has_vin3_5v(data) && nr == 0)
 		label = labels[0];
-	else if (has_12mv_adc(data) || has_10_9mv_adc(data))
+	else if (has_12mv_adc(data) || has_10_9mv_adc(data) ||
+		 has_11mv_adc(data))
 		label = labels_it8721[nr];
 	else
 		label = labels[nr];

@@ -1,3 +1,4 @@
 - AMD CPU temperature sensor type is shown as Intel temperature sensor.
 - Add support for IT8655E (Asus Prime B350m-A)
 - Fix temperature sensor type for IT8665E and IT8686E
+- Need to disable first fan for IT8613E 

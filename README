@@ -6,6 +6,10 @@ Supported chips:
     Prefix: 'it8603'
     Addresses scanned: from Super I/O config space (8 I/O ports)
     Datasheet: Not publicly available
+  * IT8613E
+    Prefix: 'it8613'
+    Addresses scanned: from Super I/O config space (8 I/O ports)
+    Datasheet: Not publicly available
   * IT8620E
     Prefix: 'it8620'
     Addresses scanned: from Super I/O config space (8 I/O ports)

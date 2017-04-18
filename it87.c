@@ -3769,6 +3769,12 @@ static int __init sm_it87_init(void)
 		return err;
 
 	for (i = 0; i < ARRAY_SIZE(sioaddr); i++) {
+		/*
+		 * Accessing the second Super-IO chi can result in board
+		 * hangs. Disable until we figure out what is going on.
+		 */
+		if (it87_sio4e_broken && sioaddr[i] == 0x4e)
+			continue;
 		memset(&sio_data, 0, sizeof(struct it87_sio_data));
 		isa_address = 0;
 		err = it87_find(sioaddr[i], &isa_address, &sio_data);

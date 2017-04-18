@@ -3685,7 +3685,7 @@ struct it87_dmi_data {
 };
 
 /*
- * On Gigabyte AB350 boards, accesses to the Super-IO chip
+ * On Gigabyte AB350 and AX370 boards, accesses to the Super-IO chip
  * at address 0x4e/0x4f can result in a system hang.
  * Accesses to address 0x2e/0x2f need to be mutex protected.
  */
@@ -3718,6 +3718,13 @@ static const struct dmi_system_id it87_dmi_table[] __initconst = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
 			DMI_MATCH(DMI_BOARD_NAME, "AB350-Gaming 3-CF"),
+		},
+		.driver_data = &gigabyte_ab350_gaming,
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AX370-Gaming K7"),
 		},
 		.driver_data = &gigabyte_ab350_gaming,
 	},

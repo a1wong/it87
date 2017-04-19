@@ -386,6 +386,7 @@ struct it87_devices {
 #define FEAT_SCALING		BIT(22)	/* Internal voltage scaling */
 #define FEAT_FANCTL_ONOFF	BIT(23)	/* chip has FAN_CTL ON/OFF */
 #define FEAT_11MV_ADC		BIT(24)
+#define FEAT_NEW_TEMPMAP	BIT(25)	/* new temp input selection */
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -565,7 +566,7 @@ static const struct it87_devices it87_devices[] = {
                 .features = FEAT_NEWER_AUTOPWM | FEAT_11MV_ADC | FEAT_16BIT_FANS
                   | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
                   | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
-                  | FEAT_AVCC3 | FEAT_SCALING,
+                  | FEAT_AVCC3 | FEAT_SCALING | FEAT_NEW_TEMPMAP,
                 .num_temp_limit = 6,
                 .peci_mask = 0x07,
         },
@@ -605,7 +606,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8655",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_AVCC3
+		  | FEAT_TEMP_OFFSET | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_BANK_SEL,
 		.num_temp_limit = 6,
 	},
@@ -613,7 +614,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8665",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_AVCC3
+		  | FEAT_TEMP_OFFSET | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
 		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
 		.num_temp_limit = 6,
@@ -622,7 +623,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8686",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_OFFSET | FEAT_SIX_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_SIX_FANS | FEAT_NEW_TEMPMAP
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
 		  | FEAT_SIX_TEMP | FEAT_BANK_SEL | FEAT_SCALING | FEAT_AVCC3,
 		.num_temp_limit = 6,
@@ -663,6 +664,7 @@ static const struct it87_devices it87_devices[] = {
 #define has_scaling(data)	((data)->features & FEAT_SCALING)
 #define has_fanctl_onoff(data)	((data)->features & FEAT_FANCTL_ONOFF)
 #define has_11mv_adc(data)	((data)->features & FEAT_11MV_ADC)
+#define has_new_tempmap(data)	((data)->features & FEAT_NEW_TEMPMAP)
 
 struct it87_sio_data {
 	enum chips type;
@@ -900,7 +902,7 @@ static void it87_update_pwm_ctrl(struct it87_data *data, int nr)
 {
 	data->pwm_ctrl[nr] = it87_read_value(data, data->REG_PWM[nr]);
 	if (has_newer_autopwm(data)) {
-		if (data->type == it8613)
+		if (has_new_tempmap(data))
 			data->pwm_temp_map[nr] = data->pwm_ctrl[nr] & 0x38;
 		else
 			data->pwm_temp_map[nr] = data->pwm_ctrl[nr] & 0x03;
@@ -1754,9 +1756,9 @@ static ssize_t show_pwm_temp_map(struct device *dev,
 	int map;
 
 	map = data->pwm_temp_map[nr];
-	if (data->type == it8613) {
+	if (has_new_tempmap(data)) {
 		map >>= 3;
-		if (map >= 7)
+		if (map >= 6)
 			map = 0;	/* Should never happen */
 	} else {
 		if (map >= 3)
@@ -1781,7 +1783,7 @@ static ssize_t set_pwm_temp_map(struct device *dev,
 	if (kstrtol(buf, 10, &val) < 0)
 		return -EINVAL;
 
-	if (nr >= 3 && data->type != it8613)
+	if (nr >= 3 && !has_new_tempmap(data))
 		val -= 3;
 
 	switch (val) {
@@ -1803,14 +1805,14 @@ static ssize_t set_pwm_temp_map(struct device *dev,
 	case BIT(5):
 		reg = 0x05;
 		break;
-	case BIT(5) | BIT(6):
+	case BIT(6):
 		reg = 0x06;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (data->type == it8613)
+	if (has_new_tempmap(data))
 		reg <<= 3;
 	else if (reg > 0x02)
 		return -EINVAL;
@@ -1823,7 +1825,9 @@ static ssize_t set_pwm_temp_map(struct device *dev,
 	 * otherwise, just store it for later use.
 	 */
 	if (data->pwm_ctrl[nr] & 0x80) {
-		data->pwm_ctrl[nr] = (data->pwm_ctrl[nr] & 0xfc) |
+		u8 mask = has_new_tempmap(data) ? 0xc7 : 0xfc;
+
+		data->pwm_ctrl[nr] = (data->pwm_ctrl[nr] & mask) |
 						data->pwm_temp_map[nr];
 		it87_write_value(data, data->REG_PWM[nr], data->pwm_ctrl[nr]);
 	}

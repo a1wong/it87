@@ -3822,6 +3822,13 @@ static const struct dmi_system_id it87_dmi_table[] __initconst = {
 	},
 	{
 		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AX370-Gaming 5"),
+		},
+		.driver_data = &gigabyte_ab350_gaming,
+	},
+	{
+		.matches = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "nVIDIA"),
 			DMI_MATCH(DMI_BOARD_NAME, "FN68PT"),
 		},

@@ -3329,13 +3329,9 @@ exit:
 	return err;
 }
 
-/* Called when we have found a new IT87. */
-static void it87_init_device(struct platform_device *pdev)
+static void it87_init_regs(struct platform_device *pdev)
 {
-	struct it87_sio_data *sio_data = dev_get_platdata(&pdev->dev);
 	struct it87_data *data = platform_get_drvdata(pdev);
-	int tmp, i;
-	u8 mask;
 
 	/* Initialize chip specific register pointers */
 	switch (data->type) {
@@ -3391,6 +3387,15 @@ static void it87_init_device(struct platform_device *pdev)
 		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
 		break;
 	}
+}
+
+/* Called when we have found a new IT87. */
+static void it87_init_device(struct platform_device *pdev)
+{
+	struct it87_sio_data *sio_data = dev_get_platdata(&pdev->dev);
+	struct it87_data *data = platform_get_drvdata(pdev);
+	int tmp, i;
+	u8 mask;
 
 	/*
 	 * For each PWM channel:
@@ -3631,6 +3636,9 @@ static int it87_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 
 	mutex_init(&data->update_lock);
+
+	/* Initialize register pointers */
+	it87_init_regs(pdev);
 
 	/* Check PWM configuration */
 	enable_pwm_interface = it87_check_pwm(dev);

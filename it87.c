@@ -560,16 +560,16 @@ static const struct it87_devices it87_devices[] = {
 		.num_temp_limit = 3,
 		.peci_mask = 0x07,
 	},
-        [it8613] = {
-                .name = "it8613",
-                .suffix = "E",
-                .features = FEAT_NEWER_AUTOPWM | FEAT_11MV_ADC | FEAT_16BIT_FANS
-                  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
-                  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
-                  | FEAT_AVCC3 | FEAT_SCALING | FEAT_NEW_TEMPMAP,
-                .num_temp_limit = 6,
-                .peci_mask = 0x07,
-        },
+	[it8613] = {
+		.name = "it8613",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_11MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
+		  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
+		  | FEAT_AVCC3 | FEAT_SCALING | FEAT_NEW_TEMPMAP,
+		.num_temp_limit = 6,
+		.peci_mask = 0x07,
+	},
 	[it8620] = {
 		.name = "it8620",
 		.suffix = "E",
@@ -2827,8 +2827,8 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		sio_data->type = it8607;
 		break;
 	case IT8613E_DEVID:
-                sio_data->type = it8613;
-                break;
+		sio_data->type = it8613;
+		break;
 	case IT8620E_DEVID:
 		sio_data->type = it8620;
 		break;
@@ -3367,15 +3367,15 @@ static void it87_init_regs(struct platform_device *pdev)
 		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
 		break;
 	case it8613:
-                data->REG_FAN = IT87_REG_FAN;
-                data->REG_FANX = IT87_REG_FANX;
-                data->REG_FAN_MIN = IT87_REG_FAN_MIN;
-                data->REG_FANX_MIN = IT87_REG_FANX_MIN;
-                data->REG_PWM = IT87_REG_PWM_8665;
-                data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET;
-                data->REG_TEMP_LOW = IT87_REG_TEMP_LOW;
-                data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
-                break;
+		data->REG_FAN = IT87_REG_FAN;
+		data->REG_FANX = IT87_REG_FANX;
+		data->REG_FAN_MIN = IT87_REG_FAN_MIN;
+		data->REG_FANX_MIN = IT87_REG_FANX_MIN;
+		data->REG_PWM = IT87_REG_PWM_8665;
+		data->REG_TEMP_OFFSET = IT87_REG_TEMP_OFFSET;
+		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW;
+		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH;
+		break;
 	default:
 		data->REG_FAN = IT87_REG_FAN;
 		data->REG_FANX = IT87_REG_FANX;

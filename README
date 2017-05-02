@@ -17,6 +17,10 @@ Supported chips:
     Prefix: 'it8622'
     Addresses scanned: from Super I/O config space (8 I/O ports)
     Datasheet: Not publicly available
+  * IT8625E
+    Prefix: 'it8625'
+    Addresses scanned: from Super I/O config space (8 I/O ports)
+    Datasheet: Not publicly available
   * IT8628E
     Prefix: 'it8628'
     Addresses scanned: from Super I/O config space (8 I/O ports)

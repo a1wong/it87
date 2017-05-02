@@ -16,6 +16,7 @@
  *            IT8620E  Super I/O chip w/LPC interface
  *            IT8622E  Super I/O chip w/LPC interface
  *            IT8623E  Super I/O chip w/LPC interface
+ *            IT8625E  Super I/O chip w/LPC interface
  *            IT8628E  Super I/O chip w/LPC interface
  *            IT8655E  Super I/O chip w/LPC interface
  *            IT8665E  Super I/O chip w/LPC interface
@@ -81,8 +82,8 @@
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
-	     it8792, it8603, it8607, it8613, it8620, it8622, it8628, it8655,
-	     it8665, it8686 };
+	     it8792, it8603, it8607, it8613, it8620, it8622, it8625, it8628,
+	     it8655, it8665, it8686 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0);
@@ -215,6 +216,7 @@ static inline void superio_exit(int ioreg)
 #define IT8620E_DEVID 0x8620
 #define IT8622E_DEVID 0x8622
 #define IT8623E_DEVID 0x8623
+#define IT8625E_DEVID 0x8625
 #define IT8628E_DEVID 0x8628
 #define IT8655E_DEVID 0x8655
 #define IT8665E_DEVID 0x8665
@@ -590,6 +592,15 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_AVCC3 | FEAT_VIN3_5V | FEAT_SCALING,
 		.num_temp_limit = 3,
 		.peci_mask = 0x07,
+	},
+	[it8625] = {
+		.name = "it8625",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OFFSET | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
+		  | FEAT_11MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
+		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
+		.num_temp_limit = 6,
 	},
 	[it8628] = {
 		.name = "it8628",
@@ -1283,6 +1294,7 @@ static int get_temp_type(struct it87_data *data, int index)
 				break;
 			}
 			break;
+		case it8625:
 		case it8655:
 		case it8665:
 			if (src1 < 3) {
@@ -2835,6 +2847,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8622E_DEVID:
 		sio_data->type = it8622;
 		break;
+	case IT8625E_DEVID:
+		sio_data->type = it8625;
+		break;
 	case IT8628E_DEVID:
 		sio_data->type = it8628;
 		break;
@@ -3178,44 +3193,57 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8665) {
-		int reg;
+	} else if (sio_data->type == it8665 || sio_data->type == it8625) {
+		int reg27, reg29, reg2d, regd3;
 
 		superio_select(sioaddr, GPIO);
 
-		/* Check for pwm2 */
-		reg = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
-		if (reg & BIT(1))
-			sio_data->skip_pwm |= BIT(1);
+		reg27 = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
+		reg29 = superio_inb(sioaddr, IT87_SIO_GPIO5_REG);
+		reg2d = superio_inb(sioaddr, IT87_SIO_PINX4_REG);
+		regd3 = superio_inb(sioaddr, IT87_SIO_GPIO9_REG);
 
-		/* Check for fan2 */
-		reg = superio_inb(sioaddr, IT87_SIO_PINX4_REG);
-		if (reg & BIT(4))
+		/* Check for pwm2, fan2 */
+		if (reg29 & BIT(1))
+			sio_data->skip_pwm |= BIT(1);
+		if (reg2d & BIT(4))
 			sio_data->skip_fan |= BIT(1);
 
 		/* Check for pwm3, fan3 */
-		reg = superio_inb(sioaddr, IT87_SIO_GPIO3_REG);
-		if (reg & BIT(6))
+		if (reg27 & BIT(6))
 			sio_data->skip_pwm |= BIT(2);
-		if (reg & BIT(7))
+		if (reg27 & BIT(7))
 			sio_data->skip_fan |= BIT(2);
 
-		/* Check for pwm5, fan5 */
-		reg = superio_inb(sioaddr, IT87_SIO_GPIO2_REG);
-		if (reg & BIT(5))
-			sio_data->skip_pwm |= BIT(4);
-		if (!(reg & BIT(4)))
-			sio_data->skip_fan |= BIT(4);
+		/* Check for pwm4, fan4, pwm5, fan5 */
+		if (sio_data->type == it8625) {
+			int reg25 = superio_inb(sioaddr, IT87_SIO_GPIO1_REG);
 
-		/* Check for pwm4, fan4, pwm6, fan6 */
-		reg = superio_inb(sioaddr, IT87_SIO_GPIO9_REG);
-		if (reg & BIT(2))
-			sio_data->skip_pwm |= BIT(3);
-		if (reg & BIT(3))
-			sio_data->skip_fan |= BIT(3);
-		if (reg & BIT(0))
+			if (reg25 & BIT(6))
+				sio_data->skip_fan |= BIT(3);
+			if (reg25 & BIT(5))
+				sio_data->skip_pwm |= BIT(3);
+			if (reg27 & BIT(3))
+				sio_data->skip_pwm |= BIT(4);
+			if (reg27 & BIT(1))
+				sio_data->skip_fan |= BIT(4);
+		} else {
+			int reg26 = superio_inb(sioaddr, IT87_SIO_GPIO2_REG);
+
+			if (regd3 & BIT(2))
+				sio_data->skip_pwm |= BIT(3);
+			if (regd3 & BIT(3))
+				sio_data->skip_fan |= BIT(3);
+			if (reg26 & BIT(5))
+				sio_data->skip_pwm |= BIT(4);
+			if (!(reg26 & BIT(4)))
+				sio_data->skip_fan |= BIT(4);
+		}
+
+		/* Check for pwm6, fan6 */
+		if (regd3 & BIT(0))
 			sio_data->skip_pwm |= BIT(5);
-		if (reg & BIT(1))
+		if (regd3 & BIT(1))
 			sio_data->skip_fan |= BIT(5);
 
 		sio_data->beep_pin = superio_inb(sioaddr,
@@ -3345,6 +3373,7 @@ static void it87_init_regs(struct platform_device *pdev)
 		data->REG_TEMP_LOW = IT87_REG_TEMP_LOW_8686;
 		data->REG_TEMP_HIGH = IT87_REG_TEMP_HIGH_8686;
 		break;
+	case it8625:
 	case it8655:
 	case it8665:
 		data->REG_FAN = IT87_REG_FAN_8665;
@@ -3484,6 +3513,7 @@ static void it87_init_device(struct platform_device *pdev)
 			if (tmp & BIT(2))
 				data->has_fan |= BIT(5); /* fan6 enabled */
 			break;
+		case it8625:
 		case it8665:
 			tmp = it87_read_value(data, IT87_REG_FAN_DIV);
 			if (tmp & BIT(3))

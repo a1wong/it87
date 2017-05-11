@@ -599,7 +599,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
 		  | FEAT_TEMP_OFFSET | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
 		  | FEAT_11MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
-		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
+		  | FEAT_SIX_PWM | FEAT_BANK_SEL | FEAT_SCALING,
 		.num_temp_limit = 6,
 	},
 	[it8628] = {
@@ -1295,6 +1295,8 @@ static int get_temp_type(struct it87_data *data, int index)
 			}
 			break;
 		case it8625:
+			if (index < 3)
+				break;
 		case it8655:
 		case it8665:
 			if (src1 < 3) {

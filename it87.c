@@ -89,6 +89,11 @@ static unsigned short force_id;
 module_param(force_id, ushort, 0);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
+static unsigned short blacklist = 1;
+module_param(blacklist, ushort, 0);
+MODULE_PARM_DESC(blacklist,
+		 "Enable/disable blacklist (1=enable, 0=disable, default 1)");
+
 static struct platform_device *it87_pdev[2];
 static bool it87_sio4e_broken;
 #ifdef __IT87_USE_ACPI_MUTEX
@@ -3923,10 +3928,10 @@ static int __init sm_it87_init(void)
 
 	for (i = 0; i < ARRAY_SIZE(sioaddr); i++) {
 		/*
-		 * Accessing the second Super-IO chi can result in board
+		 * Accessing the second Super-IO chip can result in board
 		 * hangs. Disable until we figure out what is going on.
 		 */
-		if (it87_sio4e_broken && sioaddr[i] == 0x4e)
+		if (blacklist && it87_sio4e_broken && sioaddr[i] == 0x4e)
 			continue;
 		memset(&sio_data, 0, sizeof(struct it87_sio_data));
 		isa_address = 0;

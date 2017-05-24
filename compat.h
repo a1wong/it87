@@ -44,8 +44,25 @@ static inline int strict_strtol(const char *cp, unsigned int base, long *res)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
-#define kstrtoul strict_strtoul
+#define kstrtoul strict_strtoul 
 #define kstrtol strict_strtol
+#endif
+
+/*
+ * Some kernel configurations may have CONFIG_HWMON_VID disabled.
+ * We still have the functios declared as external, so we can not use
+ * static inline.
+ */
+#if !defined(CONFIG_HWMON_VID) && !defined(CONFIG_HWMON_VID_MODULE)
+int vid_from_reg(int val, u8 vrm)
+{
+	return 0;
+}
+
+u8 vid_which_vrm(void)
+{
+	return 0;
+}
 #endif
 
 #endif /* COMPAT_H */

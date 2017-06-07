@@ -364,6 +364,7 @@ struct it87_devices {
 	const char * const suffix;
 	u32 features;
 	u8 num_temp_limit;
+	u8 num_temp_offset;
 	u8 peci_mask;
 	u8 old_peci_mask;
 };
@@ -402,6 +403,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_OLD_AUTOPWM | FEAT_FANCTL_ONOFF,
 						/* may need to overwrite */
 		.num_temp_limit = 3,
+		.num_temp_offset = 0,
 	},
 	[it8712] = {
 		.name = "it8712",
@@ -409,6 +411,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_OLD_AUTOPWM | FEAT_VID | FEAT_FANCTL_ONOFF,
 						/* may need to overwrite */
 		.num_temp_limit = 3,
+		.num_temp_offset = 0,
 	},
 	[it8716] = {
 		.name = "it8716",
@@ -417,6 +420,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS | FEAT_PWM_FREQ2
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 	},
 	[it8718] = {
 		.name = "it8718",
@@ -425,6 +429,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS
 		  | FEAT_PWM_FREQ2 | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.old_peci_mask = 0x4,
 	},
 	[it8720] = {
@@ -434,6 +439,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS
 		  | FEAT_PWM_FREQ2 | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.old_peci_mask = 0x4,
 	},
 	[it8721] = {
@@ -444,6 +450,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_FAN16_CONFIG | FEAT_FIVE_FANS | FEAT_IN7_INTERNAL
 		  | FEAT_PWM_FREQ2 | FEAT_SCALING | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x05,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
@@ -454,7 +461,8 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_FIVE_FANS
 		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2 | FEAT_SCALING
 		  | FEAT_FANCTL_ONOFF,
-		.num_temp_limit = 3,
+		.num_temp_limit = 6,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8732] = {
@@ -465,6 +473,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_FOUR_FANS
 		  | FEAT_FOUR_PWM | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
 	},
@@ -479,6 +488,7 @@ static const struct it87_devices it87_devices[] = {
 				/* 16 bit fans (OHM) */
 				/* three fans, always 16 bit (guesswork) */
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8772] = {
@@ -492,6 +502,7 @@ static const struct it87_devices it87_devices[] = {
 				/* 16 bit fans (HWSensors4, OHM) */
 				/* three fans, always 16 bit (datasheet) */
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8781] = {
@@ -501,6 +512,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_PWM_FREQ2
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.old_peci_mask = 0x4,
 	},
 	[it8782] = {
@@ -510,6 +522,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_PWM_FREQ2
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.old_peci_mask = 0x4,
 	},
 	[it8783] = {
@@ -519,6 +532,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OLD_PECI | FEAT_FAN16_CONFIG | FEAT_PWM_FREQ2
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.old_peci_mask = 0x4,
 	},
 	[it8786] = {
@@ -528,6 +542,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
 		  | FEAT_PWM_FREQ2 | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8790] = {
@@ -537,6 +552,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
 		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2 | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8792] = {
@@ -546,6 +562,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_16BIT_FANS | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI
 		  | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2 | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8603] = {
@@ -555,6 +572,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OFFSET | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
 		  | FEAT_AVCC3 | FEAT_PWM_FREQ2 | FEAT_SCALING,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8607] = {
@@ -565,6 +583,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_AVCC3 | FEAT_PWM_FREQ2 | FEAT_SCALING
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8613] = {
@@ -575,6 +594,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
 		  | FEAT_AVCC3 | FEAT_SCALING | FEAT_NEW_TEMPMAP,
 		.num_temp_limit = 6,
+		.num_temp_offset = 6,
 		.peci_mask = 0x07,
 	},
 	[it8620] = {
@@ -586,6 +606,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_SIX_TEMP | FEAT_VIN3_5V | FEAT_SCALING
 		  | FEAT_FANCTL_ONOFF,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8622] = {
@@ -596,6 +617,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
 		  | FEAT_AVCC3 | FEAT_VIN3_5V | FEAT_SCALING,
 		.num_temp_limit = 3,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8625] = {
@@ -606,6 +628,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_11MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
 		  | FEAT_SIX_PWM | FEAT_BANK_SEL | FEAT_SCALING,
 		.num_temp_limit = 6,
+		.num_temp_offset = 6,
 	},
 	[it8628] = {
 		.name = "it8628",
@@ -615,7 +638,8 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
 		  | FEAT_SIX_TEMP | FEAT_SCALING | FEAT_AVCC3
 		  | FEAT_FANCTL_ONOFF,
-		.num_temp_limit = 3,
+		.num_temp_limit = 6,
+		.num_temp_offset = 3,
 		.peci_mask = 0x07,
 	},
 	[it8655] = {
@@ -625,6 +649,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_TEMP_OFFSET | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_BANK_SEL,
 		.num_temp_limit = 6,
+		.num_temp_offset = 6,
 	},
 	[it8665] = {
 		.name = "it8665",
@@ -634,6 +659,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
 		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
 		.num_temp_limit = 6,
+		.num_temp_offset = 6,
 	},
 	[it8686] = {
 		.name = "it8686",
@@ -643,6 +669,7 @@ static const struct it87_devices it87_devices[] = {
 		  | FEAT_IN7_INTERNAL | FEAT_SIX_PWM | FEAT_PWM_FREQ2
 		  | FEAT_SIX_TEMP | FEAT_BANK_SEL | FEAT_SCALING | FEAT_AVCC3,
 		.num_temp_limit = 6,
+		.num_temp_offset = 6,
 	},
 };
 
@@ -734,7 +761,8 @@ struct it87_data {
 	u16 fan[NUM_FAN][2];	/* Register values, [nr][0]=fan, [1]=min */
 	u8 has_temp;		/* Bitfield, temp sensors enabled */
 	s8 temp[NUM_TEMP][4];	/* [nr][0]=temp, [1]=min, [2]=max, [3]=offset */
-	u8 num_temp_limit;	/* Number of temp limit/offset registers */
+	u8 num_temp_limit;	/* Number of temperature limit registers */
+	u8 num_temp_offset;	/* Number of temperature offset registers */
 	u8 sensor;		/* Register value (IT87_REG_TEMP_ENABLE) */
 	u8 extra;		/* Register value (IT87_REG_TEMP_EXTRA) */
 	u8 fan_div[NUM_FAN_DIV];/* Register encoding, shifted right */
@@ -1027,7 +1055,7 @@ static struct it87_data *it87_update_device(struct device *dev)
 			if (i >= data->num_temp_limit)
 				continue;
 
-			if (has_temp_offset(data))
+			if (has_temp_offset(data) && i < data->num_temp_offset)
 				data->temp[i][3] =
 				  it87_read_value(data,
 						  data->REG_TEMP_OFFSET[i]);
@@ -2443,7 +2471,7 @@ static umode_t it87_temp_is_visible(struct kobject *kobj,
 		return attr->mode;
 	}
 
-	if (a == 5 && !has_temp_offset(data))
+	if (a == 5 && (!has_temp_offset(data) || i >= data->num_temp_offset))
 		return 0;
 
 	if (a == 6 && !data->has_beep)
@@ -3370,6 +3398,7 @@ static void it87_init_regs(struct platform_device *pdev)
 
 	/* Initialize chip specific register pointers */
 	switch (data->type) {
+	case it8628:
 	case it8686:
 		data->REG_FAN = IT87_REG_FAN;
 		data->REG_FANX = IT87_REG_FANX;
@@ -3638,6 +3667,7 @@ static int it87_probe(struct platform_device *pdev)
 	data->type = sio_data->type;
 	data->features = it87_devices[sio_data->type].features;
 	data->num_temp_limit = it87_devices[sio_data->type].num_temp_limit;
+	data->num_temp_offset = it87_devices[sio_data->type].num_temp_offset;
 	data->peci_mask = it87_devices[sio_data->type].peci_mask;
 	data->old_peci_mask = it87_devices[sio_data->type].old_peci_mask;
 	data->bank = 0xff;

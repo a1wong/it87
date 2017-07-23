@@ -3038,9 +3038,16 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		if (reg29 & BIT(2))
 			sio_data->skip_fan |= BIT(1);
 
-		if (sio_data->type == it8603) {
+		switch (sio_data->type) {
+		case it8603:
 			sio_data->skip_in |= BIT(5); /* No VIN5 */
 			sio_data->skip_in |= BIT(6); /* No VIN6 */
+			break;
+		case it8607:
+			sio_data->skip_pwm |= BIT(0);/* No fan1 */
+			sio_data->skip_fan |= BIT(0);
+		default:
+			break;
 		}
 
 		sio_data->beep_pin = superio_inb(sioaddr,

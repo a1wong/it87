@@ -95,6 +95,14 @@ Authors:
     Jean Delvare <jdelvare@suse.de>
 
 
+Building & Installing
+---------------------
+
+* make clean
+* make
+* sudo make install
+
+
 Module Parameters
 -----------------
 

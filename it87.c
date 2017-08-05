@@ -89,13 +89,7 @@ static unsigned short force_id;
 module_param(force_id, ushort, 0);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
-static unsigned short blacklist = 1;
-module_param(blacklist, ushort, 0);
-MODULE_PARM_DESC(blacklist,
-		 "Enable/disable blacklist (1=enable, 0=disable, default 1)");
-
 static struct platform_device *it87_pdev[2];
-static bool it87_sio4e_broken;
 #ifdef __IT87_USE_ACPI_MUTEX
 static acpi_handle it87_acpi_sio_handle;
 static char *it87_acpi_sio_mutex;
@@ -127,12 +121,6 @@ static inline int superio_inb(int ioreg, int reg)
 
 	outb(reg, ioreg);
 	val = inb(ioreg + 1);
-	if (it87_sio4e_broken && ioreg == 0x4e && val == 0xff) {
-		__superio_enter(ioreg);
-		outb(reg, ioreg);
-		val = inb(ioreg + 1);
-		pr_warn("Retry access 0x4e:0x%x -> 0x%x\n", reg, val);
-	}
 
 	return val;
 }
@@ -184,9 +172,9 @@ error:
 	return -EBUSY;
 }
 
-static inline void superio_exit(int ioreg)
+static inline void superio_exit(int ioreg, bool doexit)
 {
-	if (!it87_sio4e_broken || ioreg != 0x4e) {
+	if (doexit) {
 		outb(0x02, ioreg);
 		outb(0x02, ioreg + 1);
 	}
@@ -2798,9 +2786,10 @@ static const struct attribute_group it87_group_auto_pwm = {
 static int __init it87_find(int sioaddr, unsigned short *address,
 			    struct it87_sio_data *sio_data)
 {
-	int err;
-	u16 chip_type;
 	const struct it87_devices *config;
+	bool doexit = true;
+	u16 chip_type;
+	int err;
 
 	err = superio_enter(sioaddr);
 	if (err)
@@ -2842,6 +2831,13 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		break;
 	case IT8792E_DEVID:
 		sio_data->type = it8792;
+		/*
+		 * Disabling configuration mode on IT8792E can result in system
+		 * hang-ups and access failures to the Super-IO chip at the
+		 * second SIO address. Never exit configuration mode on this
+		 * chip to avoid the problem.
+		 */
+		doexit = false;
 		break;
 	case IT8771E_DEVID:
 		sio_data->type = it8771;
@@ -3393,7 +3389,7 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		pr_info("Beeping is supported\n");
 
 exit:
-	superio_exit(sioaddr);
+	superio_exit(sioaddr, doexit);
 	return err;
 }
 
@@ -3851,18 +3847,15 @@ exit_device_put:
 }
 
 struct it87_dmi_data {
-	bool sio4e_broken;	/* SIO accesses @ 0x4e are broken	*/
 	char *sio_mutex;	/* SIO ACPI mutex			*/
 	u8 skip_pwm;		/* pwm channels to skip for this board	*/
 };
 
 /*
  * On Gigabyte AB350 and AX370 boards, accesses to the Super-IO chip
- * at address 0x4e/0x4f can result in a system hang.
- * Accesses to address 0x2e/0x2f need to be mutex protected.
+ * at address 0x2e/0x2f need to be mutex protected.
  */
 static struct it87_dmi_data gigabyte_ab350_gaming = {
-	.sio4e_broken = true,
 	.sio_mutex = "\\_SB.PCI0.SBRG.SIO1.MUT0",
 };
 
@@ -3938,7 +3931,6 @@ static int __init sm_it87_init(void)
 		dmi_data = dmi->driver_data;
 
 	if (dmi_data) {
-		it87_sio4e_broken = dmi_data->sio4e_broken;
 #ifdef __IT87_USE_ACPI_MUTEX
 		if (dmi_data->sio_mutex) {
 			static acpi_status status;
@@ -3962,12 +3954,6 @@ static int __init sm_it87_init(void)
 		return err;
 
 	for (i = 0; i < ARRAY_SIZE(sioaddr); i++) {
-		/*
-		 * Accessing the second Super-IO chip can result in board
-		 * hangs. Disable until we figure out what is going on.
-		 */
-		if (blacklist && it87_sio4e_broken && sioaddr[i] == 0x4e)
-			continue;
 		memset(&sio_data, 0, sizeof(struct it87_sio_data));
 		isa_address = 0;
 		err = it87_find(sioaddr[i], &isa_address, &sio_data);

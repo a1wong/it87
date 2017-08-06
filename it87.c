@@ -2833,6 +2833,7 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		break;
 	case IT8790E_DEVID:
 		sio_data->type = it8790;
+		doexit = false;		/* See IT8792E comment above */
 		break;
 	case IT8603E_DEVID:
 	case IT8623E_DEVID:
@@ -3821,7 +3822,26 @@ exit_device_put:
 }
 
 struct it87_dmi_data {
+	bool sio2_force_config;	/* force sio2 into configuration mode	*/
 	u8 skip_pwm;		/* pwm channels to skip for this board	*/
+};
+
+/*
+ * On various Gigabyte AM4 boards (AB350, AX370), the second Super-IO chip
+ * (IT8792E) needs to be in configuration mode before accessing the first
+ * due to a bug in IT8792E which otherwise results in LPC bus access errors.
+ * This needs to be done before accessing the first Super-IO chip since
+ * the second chip may have been accessed prior to loading this driver.
+ *
+ * The problem is also reported to affect IT8795E, which is used on X299 boards
+ * and has the same chip ID as IT9792E (0x8733). It also appears to affect
+ * systems with IT8790E, which is used on some Z97X-Gaming boards as well as
+ * Z87X-OC.
+ * DMI entries for those systems will be added as they become available and
+ * as the problem is confirmed to affect those boards.
+ */
+static struct it87_dmi_data gigabyte_sio2_force = {
+	.sio2_force_config = true,
 };
 
 /*
@@ -3837,6 +3857,27 @@ static struct it87_dmi_data nvidia_fn68pt = {
 };
 
 static const struct dmi_system_id it87_dmi_table[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AB350"),
+		},
+		.driver_data = &gigabyte_sio2_force,
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "AX370"),
+		},
+		.driver_data = &gigabyte_sio2_force,
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_BOARD_NAME, "Z97X-Gaming G1"),
+		},
+		.driver_data = &gigabyte_sio2_force,
+	},
 	{
 		.matches = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "nVIDIA"),
@@ -3863,6 +3904,9 @@ static int __init sm_it87_init(void)
 	err = platform_driver_register(&it87_driver);
 	if (err)
 		return err;
+
+	if (dmi_data && dmi_data->sio2_force_config)
+		__superio_enter(REG_4E);
 
 	for (i = 0; i < ARRAY_SIZE(sioaddr); i++) {
 		memset(&sio_data, 0, sizeof(struct it87_sio_data));

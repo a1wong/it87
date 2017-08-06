@@ -77,9 +77,6 @@
 
 #define DRVNAME "it87"
 
-/* Necessary API not (yet) exported in upstream kernel */
-/* #define __IT87_USE_ACPI_MUTEX */
-
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
 	     it8792, it8603, it8607, it8613, it8620, it8622, it8625, it8628,
@@ -90,10 +87,6 @@ module_param(force_id, ushort, 0);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
 static struct platform_device *it87_pdev[2];
-#ifdef __IT87_USE_ACPI_MUTEX
-static acpi_handle it87_acpi_sio_handle;
-static char *it87_acpi_sio_mutex;
-#endif
 
 #define	REG_2E	0x2e	/* The register to read/write */
 #define	REG_4E	0x4e	/* Secondary register to read/write */
@@ -144,17 +137,6 @@ static inline void superio_select(int ioreg, int ldn)
 
 static inline int superio_enter(int ioreg)
 {
-#ifdef __IT87_USE_ACPI_MUTEX
-	if (it87_acpi_sio_mutex) {
-		acpi_status status;
-
-		status = acpi_acquire_mutex(NULL, it87_acpi_sio_mutex, 0x10);
-		if (ACPI_FAILURE(status)) {
-			pr_err("Failed to acquire ACPI mutex\n");
-			return -EBUSY;
-		}
-	}
-#endif
 	/*
 	 * Try to reserve ioreg and ioreg + 1 for exclusive access.
 	 */
@@ -165,10 +147,6 @@ static inline int superio_enter(int ioreg)
 	return 0;
 
 error:
-#ifdef __IT87_USE_ACPI_MUTEX
-	if (it87_acpi_sio_mutex)
-		acpi_release_mutex(it87_acpi_sio_handle, NULL);
-#endif
 	return -EBUSY;
 }
 
@@ -179,10 +157,6 @@ static inline void superio_exit(int ioreg, bool doexit)
 		outb(0x02, ioreg + 1);
 	}
 	release_region(ioreg, 2);
-#ifdef __IT87_USE_ACPI_MUTEX
-	if (it87_acpi_sio_mutex)
-		acpi_release_mutex(it87_acpi_sio_handle, NULL);
-#endif
 }
 
 /* Logical device 4 registers */
@@ -3847,16 +3821,7 @@ exit_device_put:
 }
 
 struct it87_dmi_data {
-	char *sio_mutex;	/* SIO ACPI mutex			*/
 	u8 skip_pwm;		/* pwm channels to skip for this board	*/
-};
-
-/*
- * On Gigabyte AB350 and AX370 boards, accesses to the Super-IO chip
- * at address 0x2e/0x2f need to be mutex protected.
- */
-static struct it87_dmi_data gigabyte_ab350_gaming = {
-	.sio_mutex = "\\_SB.PCI0.SBRG.SIO1.MUT0",
 };
 
 /*
@@ -3872,41 +3837,6 @@ static struct it87_dmi_data nvidia_fn68pt = {
 };
 
 static const struct dmi_system_id it87_dmi_table[] __initconst = {
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
-			DMI_MATCH(DMI_BOARD_NAME, "AB350-Gaming-CF"),
-		},
-		.driver_data = &gigabyte_ab350_gaming,
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
-			DMI_MATCH(DMI_BOARD_NAME, "AB350-Gaming 3-CF"),
-		},
-		.driver_data = &gigabyte_ab350_gaming,
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
-			DMI_MATCH(DMI_BOARD_NAME, "AB350M-D3H-CF"),
-		},
-		.driver_data = &gigabyte_ab350_gaming,
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
-			DMI_MATCH(DMI_BOARD_NAME, "AX370-Gaming K7"),
-		},
-		.driver_data = &gigabyte_ab350_gaming,
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
-			DMI_MATCH(DMI_BOARD_NAME, "AX370-Gaming 5"),
-		},
-		.driver_data = &gigabyte_ab350_gaming,
-	},
 	{
 		.matches = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "nVIDIA"),
@@ -3929,25 +3859,6 @@ static int __init sm_it87_init(void)
 
 	if (dmi)
 		dmi_data = dmi->driver_data;
-
-	if (dmi_data) {
-#ifdef __IT87_USE_ACPI_MUTEX
-		if (dmi_data->sio_mutex) {
-			static acpi_status status;
-
-			status = acpi_get_handle(NULL, dmi_data->sio_mutex,
-						 &it87_acpi_sio_handle);
-			if (ACPI_SUCCESS(status)) {
-				it87_acpi_sio_mutex = dmi_data->sio_mutex;
-				pr_debug("Found ACPI SIO mutex %s\n",
-					 dmi_data->sio_mutex);
-			} else {
-				pr_warn("ACPI SIO mutex %s not found\n",
-					dmi_data->sio_mutex);
-			}
-		}
-#endif /* __IT87_USE_ACPI_MUTEX */
-	}
 
 	err = platform_driver_register(&it87_driver);
 	if (err)

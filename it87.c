@@ -607,7 +607,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8655",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
+		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP | FEAT_SCALING
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_BANK_SEL,
 		.num_temp_limit = 6,
 		.num_temp_offset = 6,
@@ -616,7 +616,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8665",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
-		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP
+		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP | FEAT_SCALING
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
 		  | FEAT_SIX_PWM | FEAT_BANK_SEL,
 		.num_temp_limit = 6,

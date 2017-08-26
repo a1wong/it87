@@ -32,5 +32,6 @@ modules clean:
 install: modules_install
 
 modules_install:
-	cp $(DRIVER).ko $(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)
+	mkdir -p $(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)
+	cp $(DRIVER).ko $(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)/
 	depmod -a -F $(SYSTEM_MAP) $(TARGET)

@@ -1623,6 +1623,7 @@ static ssize_t set_pwm_enable(struct device *dev, struct device_attribute *attr,
 	}
 
 	mutex_lock(&data->update_lock);
+	it87_update_pwm_ctrl(data, nr);
 
 	if (val == 0) {
 		if (nr < 3 && has_fanctl_onoff(data)) {

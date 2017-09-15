@@ -14,11 +14,19 @@ DRIVER := it87
 # Directory below /lib/modules/$(TARGET)/kernel into which to install
 # the module:
 MOD_SUBDIR = drivers/hwmon
+MODDESTDIR=$(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)
 
 obj-m	:= $(patsubst %,%.o,$(DRIVER))
 obj-ko  := $(patsubst %,%.ko,$(DRIVER))
 
 MAKEFLAGS += --no-print-directory
+
+ifneq ("","$(wildcard $(MODDESTDIR)/*.ko.gz)")
+COMPRESS_GZIP := y
+endif
+ifneq ("","$(wildcard $(MODDESTDIR)/*.ko.xz)")
+COMPRESS_XZ := y
+endif
 
 .PHONY: all install modules modules_install clean
 
@@ -32,6 +40,12 @@ modules clean:
 install: modules_install
 
 modules_install:
-	mkdir -p $(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)
-	cp $(DRIVER).ko $(KERNEL_MODULES)/kernel/$(MOD_SUBDIR)/
+	mkdir -p $(MODDESTDIR)
+	cp $(DRIVER).ko $(MODDESTDIR)/
+ifeq ($(COMPRESS_GZIP), y)
+	@gzip -f $(MODDESTDIR)/$(DRIVER).ko
+endif
+ifeq ($(COMPRESS_XZ), y)
+	@xz -f $(MODDESTDIR)/$(DRIVER).ko
+endif
 	depmod -a -F $(SYSTEM_MAP) $(TARGET)

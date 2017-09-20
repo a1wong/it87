@@ -3,8 +3,18 @@ TARGET		:= $(shell uname -r)
 # Or specific version
 #TARGET		:= 2.6.33.5
 KERNEL_MODULES	:= /lib/modules/$(TARGET)
-# KERNEL_BUILD	:= $(KERNEL_MODULES)/build
+
+ifneq ("","$(wildcard /usr/src/linux-headers-$(TARGET)/*)")
+# Ubuntu
 KERNEL_BUILD	:= /usr/src/linux-headers-$(TARGET)
+else
+ifneq ("","$(wildcard /usr/src/kernels/$(TARGET)/*)")
+# Fedora
+KERNEL_BUILD	:= /usr/src/kernels/$(TARGET)
+else
+KERNEL_BUILD	:= $(KERNEL_MODULES)/build
+endif
+endif
 
 #SYSTEM_MAP	:= $(KERNEL_BUILD)/System.map
 SYSTEM_MAP	:= /boot/System.map-$(TARGET)

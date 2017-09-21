@@ -296,10 +296,10 @@ must be programmed to the critical CPU temperature.
 Preliminary support
 -------------------
 
-Support for IT8607E, IT8665E, and IT8686E is preliminary. Voltage readings,
-temperature readings, fan control, and fan speed measurements may be wrong
-and/or missing. Fan control and fan speed may be enabled and reported for
-non-existing fans. Please report any problems and inconsistencies.
+Support for IT8607E is preliminary. Voltage readings, temperature readings,
+fan control, and fan speed measurements may be wrong and/or missing.
+Fan control and fan speed may be enabled and reported for non-existing
+fans. Please report any problems and inconsistencies.
 
 Reporting information for unsupported chips
 -------------------------------------------
@@ -347,3 +347,11 @@ if all fans are detected and reported.
 This information _might_ give us enough information to add experimental support
 for the chip in question. No guarantees, though - unless a datasheet is
 available, something is likely to be wrong.
+
+A note on sensors-detect
+========================
+
+There is a persistent perception that changes in this driver would have impact
+on the output of sensors-detect. This is not the case. sensors-detect is an
+independent application. Changes in this driver do not affect sensors-detect,
+and changes in sensors-detect do not affect this driver.

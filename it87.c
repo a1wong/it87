@@ -1699,6 +1699,7 @@ static ssize_t set_pwm_enable(struct device *dev, struct device_attribute *attr,
 			if (has_newer_autopwm(data)) {
 				ctrl = temp_map_to_reg(data, nr,
 						       data->pwm_temp_map[nr]);
+				ctrl &= 0x7f;
 			} else {
 				ctrl = data->pwm_duty[nr];
 			}
@@ -1711,7 +1712,9 @@ static ssize_t set_pwm_enable(struct device *dev, struct device_attribute *attr,
 		if (has_newer_autopwm(data)) {
 			ctrl = temp_map_to_reg(data, nr,
 					       data->pwm_temp_map[nr]);
-			if (val != 1)
+			if (val == 1)
+				ctrl &= 0x7f;
+			else
 				ctrl |= 0x80;
 		} else {
 			ctrl = (val == 1 ? data->pwm_duty[nr] : 0x80);

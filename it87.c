@@ -723,7 +723,6 @@ struct it87_data {
 	const struct attribute_group *groups[7];
 	enum chips type;
 	u32 features;
-	u8 bank;
 	u8 peci_mask;
 	u8 old_peci_mask;
 
@@ -921,16 +920,21 @@ static void _it87_write_value(struct it87_data *data, u8 reg, u8 value)
 	outb_p(value, data->addr + IT87_DATA_REG_OFFSET);
 }
 
-static void it87_set_bank(struct it87_data *data, u8 bank)
+static u8 it87_set_bank(struct it87_data *data, u8 bank)
 {
-	if (has_bank_sel(data) && bank != data->bank) {
+	u8 _bank = bank;
+
+	if (has_bank_sel(data)) {
 		u8 breg = _it87_read_value(data, IT87_REG_BANK);
 
-		breg &= 0x1f;
-		breg |= (bank << 5);
-		data->bank = bank;
-		_it87_write_value(data, IT87_REG_BANK, breg);
+		_bank = breg >> 5;
+		if (bank != _bank) {
+			breg &= 0x1f;
+			breg |= (bank << 5);
+			_it87_write_value(data, IT87_REG_BANK, breg);
+		}
 	}
+	return _bank;
 }
 
 /*
@@ -940,8 +944,14 @@ static void it87_set_bank(struct it87_data *data, u8 bank)
  */
 static int it87_read_value(struct it87_data *data, u16 reg)
 {
-	it87_set_bank(data, reg >> 8);
-	return _it87_read_value(data, reg & 0xff);
+	u8 bank;
+	int val;
+
+	bank = it87_set_bank(data, reg >> 8);
+	val = _it87_read_value(data, reg & 0xff);
+	it87_set_bank(data, bank);
+
+	return val;
 }
 
 /*
@@ -951,8 +961,11 @@ static int it87_read_value(struct it87_data *data, u16 reg)
  */
 static void it87_write_value(struct it87_data *data, u16 reg, u8 value)
 {
-	it87_set_bank(data, reg >> 8);
+	u8 bank;
+
+	bank = it87_set_bank(data, reg >> 8);
 	_it87_write_value(data, reg & 0xff, value);
+	it87_set_bank(data, bank);
 }
 
 static void it87_update_pwm_ctrl(struct it87_data *data, int nr)
@@ -3661,7 +3674,6 @@ static int it87_probe(struct platform_device *pdev)
 	data->pwm_num_temp_map = it87_devices[sio_data->type].num_temp_map;
 	data->peci_mask = it87_devices[sio_data->type].peci_mask;
 	data->old_peci_mask = it87_devices[sio_data->type].old_peci_mask;
-	data->bank = 0xff;
 
 	/*
 	 * IT8705F Datasheet 0.4.1, 3h == Version G.

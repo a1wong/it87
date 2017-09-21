@@ -1308,6 +1308,15 @@ static SENSOR_DEVICE_ATTR_2(temp6_max, S_IRUGO | S_IWUSR, show_temp, set_temp,
 static SENSOR_DEVICE_ATTR_2(temp6_offset, S_IRUGO | S_IWUSR, show_temp,
 			    set_temp, 5, 3);
 
+static const u8 temp_types_8686[NUM_TEMP][9] = {
+	{ 0, 8, 8, 8, 8, 8, 8, 8, 7 },
+	{ 0, 6, 8, 8, 6, 0, 0, 0, 7 },
+	{ 0, 6, 5, 8, 6, 0, 0, 0, 7 },
+	{ 4, 8, 8, 8, 8, 8, 8, 8, 7 },
+	{ 4, 6, 8, 8, 6, 0, 0, 0, 7 },
+	{ 4, 6, 5, 8, 6, 0, 0, 0, 7 },
+};
+
 static int get_temp_type(struct it87_data *data, int index)
 {
 	u8 reg, extra;
@@ -1318,27 +1327,11 @@ static int get_temp_type(struct it87_data *data, int index)
 		u8 src1, src2;
 
 		src1 = (it87_read_value(data, s1reg) >> ((index % 2) * 4)) & 0x0f;
-		src2 = it87_read_value(data, IT87_REG_TEMP_SRC2);
 
 		switch (data->type) {
 		case it8686:
-			switch (src1) {
-			case 0:
-				if (index >= 3)
-					return 4;
-				break;
-			case 1:
-				if (index == 1 || index == 2 ||
-					  index == 4 || index == 5)
-					return 6;
-				break;
-			case 2:
-				if (index == 2 || index == 6)
-					return 5;
-				break;
-			default:
-				break;
-			}
+			if (src1 < 9)
+				type = temp_types_8686[index][src1];
 			break;
 		case it8625:
 			if (index < 3)
@@ -1349,6 +1342,7 @@ static int get_temp_type(struct it87_data *data, int index)
 				index = src1;
 				break;
 			}
+			src2 = it87_read_value(data, IT87_REG_TEMP_SRC2);
 			switch(src1) {
 			case 3:
 				type = (src2 & BIT(index)) ? 6 : 5;
@@ -1367,8 +1361,8 @@ static int get_temp_type(struct it87_data *data, int index)
 			return 0;
 		}
 	}
-	if (index >= 3)
-		return 0;
+	if (type || index >= 3)
+		return type;
 
 	reg = it87_read_value(data, IT87_REG_TEMP_ENABLE);
 	extra = it87_read_value(data, IT87_REG_TEMP_EXTRA);
@@ -3857,7 +3851,7 @@ struct it87_dmi_data {
  * the second chip may have been accessed prior to loading this driver.
  *
  * The problem is also reported to affect IT8795E, which is used on X299 boards
- * and has the same chip ID as IT9792E (0x8733). It also appears to affect
+ * and has the same chip ID as IT8792E (0x8733). It also appears to affect
  * systems with IT8790E, which is used on some Z97X-Gaming boards as well as
  * Z87X-OC.
  * DMI entries for those systems will be added as they become available and

@@ -74,6 +74,7 @@
 #include <linux/acpi.h>
 #include <linux/io.h>
 #include "compat.h"
+#include "version.h"
 
 #define DRVNAME "it87"
 
@@ -3933,6 +3934,8 @@ static int __init sm_it87_init(void)
 	unsigned short isa_address;
 	bool found = false;
 	int i, err;
+
+	pr_info("it87 driver version %s\n", IT87_DRIVER_VERSION);
 
 	if (dmi)
 		dmi_data = dmi->driver_data;

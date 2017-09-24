@@ -3237,6 +3237,10 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		/* Check for pwm2, fan2 */
 		if (reg29 & BIT(1))
 			sio_data->skip_pwm |= BIT(1);
+		/*
+		 * Note: Table 6-1 in datasheet claims that FAN_TAC2
+		 * would be enabled with 29h[2]=0.
+		 */
 		if (reg2d & BIT(4))
 			sio_data->skip_fan |= BIT(1);
 
@@ -3267,7 +3271,7 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 				sio_data->skip_fan |= BIT(3);
 			if (reg26 & BIT(5))
 				sio_data->skip_pwm |= BIT(4);
-			if (!(reg26 & BIT(4)))
+			if (reg26 & BIT(4))
 				sio_data->skip_fan |= BIT(4);
 		}
 

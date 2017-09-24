@@ -44,7 +44,12 @@ all: modules
 
 # Targets for running make directly in the external module directory:
 
-modules clean:
+DRIVER_VERSION = $(shell git describe --long)
+
+version.h: it87.c
+	@echo "#define IT87_DRIVER_VERSION	\"$(DRIVER_VERSION)\"" > version.h
+
+modules clean: version.h
 	@$(MAKE) -C $(KERNEL_BUILD) M=$(CURDIR) $@
 
 install: modules_install

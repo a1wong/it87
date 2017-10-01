@@ -616,7 +616,7 @@ static const struct it87_devices it87_devices[] = {
 		.num_temp_limit = 3,
 		.num_temp_offset = 3,
 		.num_temp_map = 4,
-		.peci_mask = 0x07,
+		.peci_mask = 0x0f,
 		.smbus_bitmap = BIT(1) | BIT(2),
 	},
 	[it8625] = {
@@ -1431,7 +1431,7 @@ static const u8 temp_types_8686[NUM_TEMP][9] = {
 static int get_temp_type(struct it87_data *data, int index)
 {
 	u8 reg, extra;
-	int type = 0;
+	int ttype, type = 0;
 
 	if (has_bank_sel(data)) {
 		u8 src1, src2;
@@ -1471,15 +1471,37 @@ static int get_temp_type(struct it87_data *data, int index)
 			return 0;
 		}
 	}
+	if (type)
+		return type;
+
+	/* Dectect PECI vs. AMDTSI if possible */
+	ttype = 6;
+	if ((has_temp_peci(data, index)) && data->type != it8721) {
+		extra = data->read(data, 0x98);	/* PCH/AMDTSI host status */
+		if (extra & BIT(6))
+			ttype = 5;
+	}
+
+	reg = data->read(data, IT87_REG_TEMP_ENABLE);
+
+	/* Per chip special detection */
+	switch (data->type) {
+	case it8622:
+		if (!(reg & 0xc0) && index == 3)
+			type = ttype;
+		break;
+	default:
+		break;
+	}
+
 	if (type || index >= 3)
 		return type;
 
-	reg = data->read(data, IT87_REG_TEMP_ENABLE);
 	extra = data->read(data, IT87_REG_TEMP_EXTRA);
 
 	if ((has_temp_peci(data, index) && (reg >> 6 == index + 1)) ||
 	    (has_temp_old_peci(data, index) && (extra & 0x80)))
-		type = 6;		/* Intel PECI */
+		type = ttype;		/* Intel PECI or AMDTSI */
 	if (reg & BIT(index))
 		type = 3;		/* thermal diode */
 	else if (reg & BIT(index + 3))

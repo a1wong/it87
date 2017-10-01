@@ -2958,6 +2958,7 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	const struct it87_devices *config;
 	phys_addr_t base = 0;
 	bool doexit = true;
+	char mmio_str[32];
 	u16 chip_type;
 	int err;
 
@@ -3087,9 +3088,6 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 	err = 0;
 	sio_data->revision = superio_inb(sioaddr, DEVREV) & 0x0f;
-	pr_info("Found IT%04x%s chip at 0x%x, revision %d\n", chip_type,
-		it87_devices[sio_data->type].suffix,
-		*address, sio_data->revision);
 
 	config = &it87_devices[sio_data->type];
 
@@ -3103,6 +3101,14 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		}
 	}
 	*mmio_address = base;
+
+	mmio_str[0] = '\0';
+	if (base)
+		snprintf(mmio_str, sizeof(mmio_str), " [MMIO at %pa]", &base);
+
+	pr_info("Found IT%04x%s chip at 0x%x%s, revision %d\n", chip_type,
+		it87_devices[sio_data->type].suffix,
+		*address, mmio_str, sio_data->revision);
 
 	/* in7 (VSB or VCCH5V) is always internal on some chips */
 	if (has_in7_internal(config))

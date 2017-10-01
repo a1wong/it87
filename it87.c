@@ -617,6 +617,7 @@ static const struct it87_devices it87_devices[] = {
 		.num_temp_offset = 3,
 		.num_temp_map = 4,
 		.peci_mask = 0x07,
+		.smbus_bitmap = BIT(1) | BIT(2),
 	},
 	[it8625] = {
 		.name = "it8625",

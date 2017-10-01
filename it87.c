@@ -372,6 +372,7 @@ struct it87_devices {
 #define FEAT_11MV_ADC		BIT(24)
 #define FEAT_NEW_TEMPMAP	BIT(25)	/* new temp input selection */
 #define FEAT_MMIO		BIT(26)	/* Chip supports MMIO */
+#define FEAT_FOUR_TEMP		BIT(27)
 
 static const struct it87_devices it87_devices[] = {
 	[it87] = {
@@ -610,7 +611,7 @@ static const struct it87_devices it87_devices[] = {
 		.name = "it8622",
 		.suffix = "E",
 		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
-		  | FEAT_TEMP_PECI | FEAT_FIVE_FANS
+		  | FEAT_TEMP_PECI | FEAT_FIVE_FANS | FEAT_FOUR_TEMP
 		  | FEAT_FIVE_PWM | FEAT_IN7_INTERNAL | FEAT_PWM_FREQ2
 		  | FEAT_AVCC3 | FEAT_VIN3_5V | FEAT_SCALING,
 		.num_temp_limit = 3,
@@ -717,6 +718,7 @@ static const struct it87_devices it87_devices[] = {
 #define has_11mv_adc(data)	((data)->features & FEAT_11MV_ADC)
 #define has_new_tempmap(data)	((data)->features & FEAT_NEW_TEMPMAP)
 #define has_mmio(data)		((data)->features & FEAT_MMIO)
+#define has_four_temp(data)	((data)->features & FEAT_FOUR_TEMP)
 
 struct it87_sio_data {
 	enum chips type;
@@ -4006,7 +4008,9 @@ static int it87_probe(struct platform_device *pdev)
 	data->in_internal = sio_data->internal;
 	data->has_in = 0x3ff & ~sio_data->skip_in;
 
-	if (has_six_temp(data)) {
+	if (has_four_temp(data)) {
+		data->has_temp |= BIT(3);
+	} else if (has_six_temp(data)) {
 		u8 reg = data->read(data, IT87_REG_TEMP456_ENABLE);
 
 		/* Check for additional temperature sensors */

@@ -93,6 +93,7 @@ Supported chips:
 Authors:
     Christophe Gauthron
     Jean Delvare <jdelvare@suse.de>
+    Guenter Roeck <linux@roeck-us.net>
 
 
 Building & Installing
@@ -121,6 +122,26 @@ Module Parameters
   Force PWM polarity to active high (DANGEROUS). Some chips are
   misconfigured by BIOS - PWM values would be inverted. This option tries
   to fix this. Please contact your BIOS manufacturer and ask him for fix.
+
+* force_id
+
+  Force chip ID to specified value. Should only be used for testing.
+
+* ignore_resource_conflict
+
+  Similar to acpi_enforce_resources=lax, but only affects this driver.
+  ACPI resource conflicts are ignored if this parameter is provided and
+  set to 1.
+  Provided since there are reports that system-wide acpi_enfore_resources=lax
+  can result in boot failures on some systems.
+  Note: This is inherently risky since it means that both ACPI and this driver
+  may access the chip at the same time. This can result in race conditions and,
+  worst casa, result in unexpected system reboots.
+
+* mmio
+
+  If set to 1, the driver uses MMIO to access the chip if supported. This is
+  faster and less risky (untested!).
 
 
 Hardware Interfaces

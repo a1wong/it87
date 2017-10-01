@@ -3885,15 +3885,14 @@ static int it87_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-	if (!res)
-		return -EINVAL;
-	if (res->flags & IORESOURCE_IO) {
+	if (res) {
 		if (!devm_request_region(dev, res->start, IT87_EC_EXTENT,
 					 DRVNAME)) {
 			dev_err(dev, "Failed to request region %pR\n", res);
 			return -EBUSY;
 		}
 	} else {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		data->mmio = devm_ioremap_resource(dev, res);
 		if (IS_ERR(data->mmio))
 			return PTR_ERR(data->mmio);

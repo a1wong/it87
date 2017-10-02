@@ -74,7 +74,10 @@
 #include <linux/acpi.h>
 #include <linux/io.h>
 #include "compat.h"
-#include "version.h"
+
+#ifndef IT87_DRIVER_VERSION
+#define IT87_DRIVER_VERSION	"<not provided>"
+#endif
 
 #define DRVNAME "it87"
 

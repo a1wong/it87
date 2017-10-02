@@ -11,6 +11,7 @@
  *  similar parts.  The other devices are supported by different drivers.
  *
  *  Supports: IT8603E  Super I/O chip w/LPC interface
+ *            IT8606E  Super I/O chip w/LPC interface
  *            IT8607E  Super I/O chip w/LPC interface
  *            IT8613E  Super I/O chip w/LPC interface
  *            IT8620E  Super I/O chip w/LPC interface
@@ -83,8 +84,8 @@
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
-	     it8792, it8603, it8607, it8613, it8620, it8622, it8625, it8628,
-	     it8655, it8665, it8686 };
+	     it8792, it8603, it8606, it8607, it8613, it8620, it8622, it8625,
+	     it8628, it8655, it8665, it8686 };
 
 static unsigned short force_id;
 module_param(force_id, ushort, 0000);
@@ -187,6 +188,7 @@ static inline void superio_exit(int ioreg, bool doexit)
 #define IT8786E_DEVID 0x8786
 #define IT8790E_DEVID 0x8790
 #define IT8603E_DEVID 0x8603
+#define IT8606E_DEVID 0x8606
 #define IT8607E_DEVID 0x8607
 #define IT8613E_DEVID 0x8613
 #define IT8620E_DEVID 0x8620
@@ -572,6 +574,17 @@ static const struct it87_devices it87_devices[] = {
 		.num_temp_limit = 3,
 		.num_temp_offset = 3,
 		.num_temp_map = 4,
+		.peci_mask = 0x07,
+	},
+	[it8606] = {
+		.name = "it8606",
+		.suffix = "E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_12MV_ADC | FEAT_16BIT_FANS
+		  | FEAT_TEMP_PECI | FEAT_IN7_INTERNAL
+		  | FEAT_AVCC3 | FEAT_PWM_FREQ2 | FEAT_SCALING,
+		.num_temp_limit = 3,
+		.num_temp_offset = 3,
+		.num_temp_map = 3,
 		.peci_mask = 0x07,
 	},
 	[it8607] = {
@@ -3020,6 +3033,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8623E_DEVID:
 		sio_data->type = it8603;
 		break;
+	case IT8606E_DEVID:
+		sio_data->type = it8606;
+		break;
 	case IT8607E_DEVID:
 		sio_data->type = it8607;
 		break;
@@ -3188,7 +3204,8 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8603 || sio_data->type == it8607) {
+	} else if (sio_data->type == it8603 || sio_data->type == it8606 ||
+		   sio_data->type == it8607) {
 		int reg27, reg29;
 
 		superio_select(sioaddr, GPIO);

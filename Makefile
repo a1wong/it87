@@ -44,10 +44,14 @@ all: modules
 
 # Targets for running make directly in the external module directory:
 
-EXTRA_CFLAGS=-DIT87_DRIVER_VERSION='\"$(shell git describe --long)\"'
+ifneq ("","$(wildcard .git/*)")
+IT87_CFLAGS=-DIT87_DRIVER_VERSION='\"$(shell git describe --long)\"'
+else
+IT87_CFLAGS=-DIT87_DRIVER_VERSION='\"<unknown>\"'
+endif
 
 modules:
-	@$(MAKE) EXTRA_CFLAGS=$(EXTRA_CFLAGS) -C $(KERNEL_BUILD) M=$(CURDIR) $@
+	@$(MAKE) EXTRA_CFLAGS="$(IT87_CFLAGS)" -C $(KERNEL_BUILD) M=$(CURDIR) $@
 
 clean:
 	@$(MAKE) -C $(KERNEL_BUILD) M=$(CURDIR) $@

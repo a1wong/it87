@@ -1458,7 +1458,7 @@ static int get_temp_type(struct it87_data *data, int index)
 				break;
 			}
 			src2 = data->temp_src[3];
-			switch(src1) {
+			switch (src1) {
 			case 3:
 				type = (src2 & BIT(index)) ? 6 : 5;
 				break;
@@ -1838,7 +1838,7 @@ static ssize_t set_pwm_enable(struct device *dev, struct device_attribute *attr,
 
 	err = it87_lock(data);
 	if (err)
-		return err;;
+		return err;
 
 	it87_update_pwm_ctrl(data, nr);
 

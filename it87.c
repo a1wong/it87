@@ -87,15 +87,15 @@ enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
 	     it8655, it8665, it8686 };
 
 static unsigned short force_id;
-module_param(force_id, ushort, 0);
+module_param(force_id, ushort, 0000);
 MODULE_PARM_DESC(force_id, "Override the detected device ID");
 
 static bool ignore_resource_conflict;
-module_param(ignore_resource_conflict, bool, 0);
+module_param(ignore_resource_conflict, bool, 0000);
 MODULE_PARM_DESC(ignore_resource_conflict, "Ignore ACPI resource conflict");
 
 static bool mmio;
-module_param(mmio, bool, 0);
+module_param(mmio, bool, 0000);
 MODULE_PARM_DESC(mmio, "Use MMIO if available");
 
 static struct platform_device *it87_pdev[2];
@@ -4263,9 +4263,9 @@ static void __exit sm_it87_exit(void)
 
 MODULE_AUTHOR("Chris Gauthron, Jean Delvare <jdelvare@suse.de>");
 MODULE_DESCRIPTION("IT8705F/IT871xF/IT872xF hardware monitoring driver");
-module_param(update_vbat, bool, 0);
+module_param(update_vbat, bool, 0000);
 MODULE_PARM_DESC(update_vbat, "Update vbat if set else return powerup value");
-module_param(fix_pwm_polarity, bool, 0);
+module_param(fix_pwm_polarity, bool, 0000);
 MODULE_PARM_DESC(fix_pwm_polarity,
 		 "Force PWM polarity to active high (DANGEROUS)");
 MODULE_LICENSE("GPL");

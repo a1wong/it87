@@ -1158,7 +1158,8 @@ static struct it87_data *it87_update_device(struct device *dev)
 			if (!(data->has_fan & BIT(i)))
 				continue;
 
-			data->fan[i][1] = data->read(data, data->REG_FAN_MIN[i]);
+			data->fan[i][1] = data->read(data,
+						     data->REG_FAN_MIN[i]);
 			data->fan[i][0] = data->read(data, data->REG_FAN[i]);
 			/* Add high byte if in 16-bit mode */
 			if (has_16bit_fans(data)) {
@@ -2933,7 +2934,8 @@ static const struct attribute_group it87_group_auto_pwm = {
 
 /* SuperIO detection - will change isa_address if a chip is found */
 static int __init it87_find(int sioaddr, unsigned short *address,
-			    phys_addr_t *mmio_address, struct it87_sio_data *sio_data)
+			    phys_addr_t *mmio_address,
+			    struct it87_sio_data *sio_data)
 {
 	const struct it87_devices *config;
 	phys_addr_t base = 0;
@@ -4121,21 +4123,24 @@ static struct it87_dmi_data nvidia_fn68pt = {
 static const struct dmi_system_id it87_dmi_table[] __initconst = {
 	{
 		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_SYS_VENDOR,
+				  "Gigabyte Technology Co., Ltd."),
 			DMI_MATCH(DMI_BOARD_NAME, "AB350"),
 		},
 		.driver_data = &gigabyte_sio2_force,
 	},
 	{
 		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_SYS_VENDOR,
+				  "Gigabyte Technology Co., Ltd."),
 			DMI_MATCH(DMI_BOARD_NAME, "AX370"),
 		},
 		.driver_data = &gigabyte_sio2_force,
 	},
 	{
 		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Gigabyte Technology Co., Ltd."),
+			DMI_MATCH(DMI_SYS_VENDOR,
+				  "Gigabyte Technology Co., Ltd."),
 			DMI_MATCH(DMI_BOARD_NAME, "Z97X-Gaming G1"),
 		},
 		.driver_data = &gigabyte_sio2_force,

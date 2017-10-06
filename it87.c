@@ -788,7 +788,6 @@ struct it87_data {
 	const u8 *REG_TEMP_HIGH;
 
 	unsigned short addr;
-	const char *name;
 	struct mutex update_lock;
 	char valid;		/* !=0 if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
@@ -1135,15 +1134,19 @@ static void it87_unlock(struct it87_data *data)
 static struct it87_data *it87_update_device(struct device *dev)
 {
 	struct it87_data *data = dev_get_drvdata(dev);
+	struct it87_data *ret = data;
 	int err;
 	int i;
 
-	err = it87_lock(data);
-	if (err)
-		return ERR_PTR(err);
+	mutex_lock(&data->update_lock);
 
 	if (time_after(jiffies, data->last_updated + HZ + HZ / 2) ||
 	    !data->valid) {
+		err = smbus_disable(data);
+		if (err) {
+			ret = ERR_PTR(err);
+			goto unlock;
+		}
 		if (update_vbat) {
 			/*
 			 * Cleared after each update, so reenable.  Value
@@ -1240,9 +1243,11 @@ static struct it87_data *it87_update_device(struct device *dev)
 		}
 		data->last_updated = jiffies;
 		data->valid = 1;
+		smbus_enable(data);
 	}
-	it87_unlock(data);
-	return data;
+unlock:
+	mutex_unlock(&data->update_lock);
+	return ret;
 }
 
 static ssize_t show_in(struct device *dev, struct device_attribute *attr,

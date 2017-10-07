@@ -258,6 +258,10 @@ static bool fix_pwm_polarity;
  * Super-I/O configuration space.
  */
 #define IT87_REG_VID           0x0a
+
+/* Interface Selection register on other chips */
+#define IT87_REG_IFSEL         0x0a
+
 /*
  * The IT8705F and IT8712F earlier than revision 0x08 use register 0x0b
  * for fan divisors. Later IT8712F revisions must use 16-bit tachometer
@@ -1465,11 +1469,12 @@ static int get_temp_type(struct it87_data *data, int index)
 	if (type)
 		return type;
 
-	/* Dectect PECI vs. AMDTSI if possible */
+	/* Dectect PECI vs. AMDTSI */
 	ttype = 6;
-	if ((has_temp_peci(data, index)) && data->type != it8721) {
-		extra = data->read(data, 0x98);	/* PCH/AMDTSI host status */
-		if (extra & BIT(6))
+	if ((has_temp_peci(data, index)) || data->type == it8721 ||
+	    data->type == it8720) {
+		extra = data->read(data, IT87_REG_IFSEL);
+		if ((extra & 0x70) == 0x40)
 			ttype = 5;
 	}
 

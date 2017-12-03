@@ -4263,6 +4263,7 @@ module_param(fix_pwm_polarity, bool, 0000);
 MODULE_PARM_DESC(fix_pwm_polarity,
 		 "Force PWM polarity to active high (DANGEROUS)");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(IT87_DRIVER_VERSION);
 
 module_init(sm_it87_init);
 module_exit(sm_it87_exit);

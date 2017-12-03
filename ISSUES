@@ -5,3 +5,20 @@ The driver is known to not build for v2.6.32 kernels. Exact errors are unknown,
 though it is likely that kernel API functions are incompatible or not supported
 in v2.6.32. Patches to fix the problem will be accepted as long as they are
 implemented in compat.h.
+
+Fan issues after suspend on Gigabyte GA-AX370 Gaming 5 + Ubuntu
+===============================================================
+
+Jaka Jaksic reports that after resuming from suspend to memory on Gigabyte
+GA-AX370 Gaming 5, fans start spinning very fast, regardless of whether IT87
+is loaded or not. Analysis shows that some chip registers have a wrong value
+after resume. The working assumption is that there is a BIOS problem.
+There is no known workaround.
+
+On-board temperature display shows '00' on GA-AX370 Gaming 5
+============================================================
+
+Öyvind Saether reports that the on-board two digit alarmblock display on
+Gigabyte AX370 Gaming 5 shows '00' instead of the current temperature after
+"modprobe it87". No further information is available at this time.
+There is no known workaround.

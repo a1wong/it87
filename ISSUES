@@ -1,0 +1,7 @@
+Support for old kernel versions
+===============================
+
+The driver is known to not build for v2.6.32 kernels. Exact errors are unknown,
+though it is likely that kernel API functions are incompatible or not supported
+in v2.6.32. Patches to fix the problem will be accepted as long as they are
+implemented in compat.h.

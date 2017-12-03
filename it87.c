@@ -3949,6 +3949,17 @@ static int it87_probe(struct platform_device *pdev)
 	/* Initialize register pointers */
 	it87_init_regs(pdev);
 
+	/*
+	 * We need to disable SMBus before we can read any registers in
+	 * the envmon address space, even if it is for chip identification
+	 * purposes. If the chip has SMBus client support, it likely also has
+	 * multi-page envmon registers, so we have to set the page anyway
+	 * before accessing those registers. Kind of a chicken-and-egg
+	 * problem.
+	 * Fortunately, the chip was already identified through the SIO
+	 * address space, only recent chips are affected, and this is just
+	 * an additional safeguard.
+	 */
 	err = smbus_disable(data);
 	if (err)
 		return err;

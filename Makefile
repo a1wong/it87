@@ -20,19 +20,6 @@ endif
 SYSTEM_MAP	:= /boot/System.map-$(TARGET)
 
 DRIVER := it87
-ifneq ("","$(wildcard .git/*)")
-DRIVER_VERSION := $(shell git describe --long)
-else
-ifneq ("", "$(wildcard VERSION)")
-DRIVER_VERSION := $(shell cat VERSION)
-else
-DRIVER_VERSION := unknown
-endif
-endif
-
-# DKMS
-DKMS_ROOT_PATH=/usr/src/$(DRIVER)-$(DRIVER_VERSION)
-MODPROBE_OUTPUT=$(shell lsmod | grep it87)
 
 # Directory below /lib/modules/$(TARGET)/kernel into which to install
 # the module:
@@ -51,13 +38,17 @@ ifneq ("","$(wildcard $(MODDESTDIR)/*.ko.xz)")
 COMPRESS_XZ := y
 endif
 
-.PHONY: all install modules modules_install clean dkms dkms_clean
+.PHONY: all install modules modules_install clean
 
 all: modules
 
 # Targets for running make directly in the external module directory:
 
-IT87_CFLAGS=-DIT87_DRIVER_VERSION='\"$(DRIVER_VERSION)\"'
+ifneq ("","$(wildcard .git/*)")
+IT87_CFLAGS=-DIT87_DRIVER_VERSION='\"$(shell git describe --long)\"'
+else
+IT87_CFLAGS=-DIT87_DRIVER_VERSION='\"<unknown>\"'
+endif
 
 modules:
 	@$(MAKE) EXTRA_CFLAGS="$(IT87_CFLAGS)" -C $(KERNEL_BUILD) M=$(CURDIR) $@
@@ -77,24 +68,3 @@ ifeq ($(COMPRESS_XZ), y)
 	@xz -f $(MODDESTDIR)/$(DRIVER).ko
 endif
 	depmod -a -F $(SYSTEM_MAP) $(TARGET)
-
-dkms:
-	@sed -i -e '/^PACKAGE_VERSION=/ s/=.*/=\"$(DRIVER_VERSION)\"/' dkms.conf
-	@echo "$(DRIVER_VERSION)" >VERSION
-	@mkdir $(DKMS_ROOT_PATH)
-	@cp `pwd`/dkms.conf $(DKMS_ROOT_PATH)
-	@cp `pwd`/VERSION $(DKMS_ROOT_PATH)
-	@cp `pwd`/Makefile $(DKMS_ROOT_PATH)
-	@cp `pwd`/compat.h $(DKMS_ROOT_PATH)
-	@cp `pwd`/it87.c $(DKMS_ROOT_PATH)
-	@dkms add -m $(DRIVER) -v $(DRIVER_VERSION)
-	@dkms build -m $(DRIVER) -v $(DRIVER_VERSION)
-	@dkms install --force -m $(DRIVER) -v $(DRIVER_VERSION)
-	@modprobe $(DRIVER)
-
-dkms_clean:
-	@if [ ! -z "$(MODPROBE_OUTPUT)" ]; then \
-		rmmod $(DRIVER);\
-	fi
-	@dkms remove -m $(DRIVER) -v $(DRIVER_VERSION) --all
-	@rm -rf $(DKMS_ROOT_PATH)

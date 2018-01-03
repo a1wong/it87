@@ -136,7 +136,7 @@ Module Parameters
   can result in boot failures on some systems.
   Note: This is inherently risky since it means that both ACPI and this driver
   may access the chip at the same time. This can result in race conditions and,
-  worst casa, result in unexpected system reboots.
+  worst case, result in unexpected system reboots.
 
 * mmio
 

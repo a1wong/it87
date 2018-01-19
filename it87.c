@@ -3440,15 +3440,9 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		reg2d = superio_inb(sioaddr, IT87_SIO_PINX4_REG);
 		regd3 = superio_inb(sioaddr, IT87_SIO_GPIO9_REG);
 
-		/* Check for pwm2, fan2 */
+		/* Check for pwm2 */
 		if (reg29 & BIT(1))
 			sio_data->skip_pwm |= BIT(1);
-		/*
-		 * Note: Table 6-1 in datasheet claims that FAN_TAC2
-		 * would be enabled with 29h[2]=0.
-		 */
-		if (reg2d & BIT(4))
-			sio_data->skip_fan |= BIT(1);
 
 		/* Check for pwm3, fan3 */
 		if (reg27 & BIT(6))
@@ -3456,28 +3450,38 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 		if (reg27 & BIT(7))
 			sio_data->skip_fan |= BIT(2);
 
-		/* Check for pwm4, fan4, pwm5, fan5 */
+		/* Check for fan2, pwm4, fan4, pwm5, fan5 */
 		if (sio_data->type == it8625) {
 			int reg25 = superio_inb(sioaddr, IT87_SIO_GPIO1_REG);
 
+			if (reg29 & BIT(2))
+				sio_data->skip_fan |= BIT(1);
 			if (reg25 & BIT(6))
 				sio_data->skip_fan |= BIT(3);
 			if (reg25 & BIT(5))
 				sio_data->skip_pwm |= BIT(3);
 			if (reg27 & BIT(3))
 				sio_data->skip_pwm |= BIT(4);
-			if (reg27 & BIT(1))
+			if (!(reg27 & BIT(1)))
 				sio_data->skip_fan |= BIT(4);
 		} else {
 			int reg26 = superio_inb(sioaddr, IT87_SIO_GPIO2_REG);
 
+			if (reg2d & BIT(4))
+				sio_data->skip_fan |= BIT(1);
 			if (regd3 & BIT(2))
 				sio_data->skip_pwm |= BIT(3);
 			if (regd3 & BIT(3))
 				sio_data->skip_fan |= BIT(3);
 			if (reg26 & BIT(5))
 				sio_data->skip_pwm |= BIT(4);
-			if (reg26 & BIT(4))
+			/*
+			 * Table 6-1 in datasheet claims that FAN_TAC5 would
+			 * be enabled with 26h[4]=0. This contradicts with the
+			 * information in section 8.3.9 and with feedback from
+			 * users.
+			 */
+			if (!(reg26 & BIT(4)))
 				sio_data->skip_fan |= BIT(4);
 		}
 

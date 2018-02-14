@@ -772,6 +772,7 @@ struct it87_data {
 	u8 old_peci_mask;
 
 	u8 smbus_bitmap;	/* !=0 if SMBus needs to be disabled */
+	u8 saved_bank;		/* saved bank register value */
 	u8 ec_special_config;	/* EC special config register restore value */
 	u8 sioaddr;		/* SIO port address */
 	bool doexit;		/* true if exit from sio config is ok */
@@ -962,6 +963,18 @@ static const unsigned int pwm_freq[8] = {
 	750000,
 };
 
+static int _it87_io_read(struct it87_data *data, u16 reg)
+{
+	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
+	return inb_p(data->addr + IT87_DATA_REG_OFFSET);
+}
+
+static void _it87_io_write(struct it87_data *data, u16 reg, u8 value)
+{
+	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
+	outb_p(value, data->addr + IT87_DATA_REG_OFFSET);
+}
+
 static int smbus_disable(struct it87_data *data)
 {
 	int err;
@@ -974,6 +987,8 @@ static int smbus_disable(struct it87_data *data)
 		superio_outb(data->sioaddr, IT87_SPECIAL_CFG_REG,
 			     data->ec_special_config & ~data->smbus_bitmap);
 		superio_exit(data->sioaddr, data->doexit);
+		if (has_bank_sel(data) && !data->mmio)
+			data->saved_bank = _it87_io_read(data, IT87_REG_BANK);
 	}
 	return 0;
 }
@@ -983,6 +998,8 @@ static int smbus_enable(struct it87_data *data)
 	int err;
 
 	if (data->smbus_bitmap) {
+		if (has_bank_sel(data) && !data->mmio)
+			_it87_io_write(data, IT87_REG_BANK, data->saved_bank);
 		err = superio_enter(data->sioaddr);
 		if (err)
 			return err;
@@ -993,18 +1010,6 @@ static int smbus_enable(struct it87_data *data)
 		superio_exit(data->sioaddr, data->doexit);
 	}
 	return 0;
-}
-
-static int _it87_io_read(struct it87_data *data, u16 reg)
-{
-	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
-	return inb_p(data->addr + IT87_DATA_REG_OFFSET);
-}
-
-static void _it87_io_write(struct it87_data *data, u16 reg, u8 value)
-{
-	outb_p(reg, data->addr + IT87_ADDR_REG_OFFSET);
-	outb_p(value, data->addr + IT87_DATA_REG_OFFSET);
 }
 
 static u8 it87_io_set_bank(struct it87_data *data, u8 bank)

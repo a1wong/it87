@@ -31,6 +31,8 @@
  *            IT8726F  Super I/O chip w/LPC interface
  *            IT8728F  Super I/O chip w/LPC interface
  *            IT8732F  Super I/O chip w/LPC interface
+ *            IT8736F  Super I/O chip w/LPC interface
+ *            IT8738E  Super I/O chip w/LPC interface
  *            IT8758E  Super I/O chip w/LPC interface
  *            IT8771E  Super I/O chip w/LPC interface
  *            IT8772E  Super I/O chip w/LPC interface
@@ -83,6 +85,7 @@
 #define DRVNAME "it87"
 
 enum chips { it87, it8712, it8716, it8718, it8720, it8721, it8728, it8732,
+	     it8736, it8738,
 	     it8771, it8772, it8781, it8782, it8783, it8786, it8790,
 	     it8792, it8603, it8606, it8607, it8613, it8620, it8622, it8625,
 	     it8628, it8655, it8665, it8686 };
@@ -179,6 +182,8 @@ static inline void superio_exit(int ioreg, bool doexit)
 #define IT8726F_DEVID 0x8726
 #define IT8728F_DEVID 0x8728
 #define IT8732F_DEVID 0x8732
+#define IT8736F_DEVID 0x8736
+#define IT8738E_DEVID 0x8738
 #define IT8792E_DEVID 0x8733
 #define IT8771E_DEVID 0x8771
 #define IT8772E_DEVID 0x8772
@@ -472,6 +477,33 @@ static const struct it87_devices it87_devices[] = {
 		.num_temp_map = 3,
 		.peci_mask = 0x07,
 		.old_peci_mask = 0x02,	/* Actually reports PCH */
+	},
+	[it8736] = {
+		.name = "it8736",
+		.model = "IT8736F",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
+		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_FOUR_FANS
+		  | FEAT_FOUR_PWM | FEAT_FANCTL_ONOFF | FEAT_SCALING,
+		.num_temp_limit = 3,
+		.num_temp_offset = 3,
+		.num_temp_map = 3,
+		.peci_mask = 0x07,
+		.old_peci_mask = 0x02,	/* Actually reports PCH */
+	},
+	[it8738] = {
+		.name = "it8738",
+		.model = "IT8738E",
+		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
+		  | FEAT_TEMP_OLD_PECI | FEAT_TEMP_PECI
+		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL
+		  | FEAT_FANCTL_ONOFF | FEAT_SCALING
+		  | FEAT_AVCC3,
+		.num_temp_limit = 3,
+		.num_temp_offset = 3,
+		.num_temp_map = 3,
+		.peci_mask = 0x07,
+		.old_peci_mask = 0x02,
 	},
 	[it8771] = {
 		.name = "it8771",
@@ -3012,6 +3044,12 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 	case IT8732F_DEVID:
 		sio_data->type = it8732;
 		break;
+	case IT8736F_DEVID:
+		sio_data->type = it8736;
+		break;
+	case IT8738E_DEVID:
+		sio_data->type = it8738;
+		break;
 	case IT8792E_DEVID:
 		sio_data->type = it8792;
 		/*
@@ -3383,7 +3421,8 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;
-	} else if (sio_data->type == it8732) {
+	} else if (sio_data->type == it8732 || sio_data->type == it8736 ||
+		   sio_data->type == it8738) {
 		int reg;
 
 		superio_select(sioaddr, GPIO);
@@ -3405,9 +3444,11 @@ static int __init it87_find(int sioaddr, unsigned short *address,
 			sio_data->skip_fan |= BIT(3);
 
 		/* Check if AVCC is on VIN3 */
-		reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
-		if (reg & BIT(0))
-			sio_data->internal |= BIT(0);
+		if (sio_data->type != it8738) {
+			reg = superio_inb(sioaddr, IT87_SIO_PINX2_REG);
+			if (reg & BIT(0))
+				sio_data->internal |= BIT(0);
+		}
 
 		sio_data->beep_pin = superio_inb(sioaddr,
 						 IT87_SIO_BEEP_PIN_REG) & 0x3f;

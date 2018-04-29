@@ -20,7 +20,12 @@ endif
 endif
 
 #SYSTEM_MAP	:= $(KERNEL_BUILD)/System.map
+ifneq ("","$(wildcard /boot/System.map-$(TARGET))")
 SYSTEM_MAP	:= /boot/System.map-$(TARGET)
+else
+# Arch
+SYSTEM_MAP	:= /proc/kallsyms
+endif
 
 DRIVER := it87
 ifneq ("","$(wildcard .git/*)")

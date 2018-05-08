@@ -11,6 +11,18 @@
 
 #include <linux/version.h>
 
+#if !defined (CONFIG_HWMON_VID) && !defined(CONFIG_HWMON_VID_MODULE)
+int vid_from_reg(int val, u8 vrm)
+{
+        return 0;
+}
+
+u8 vid_which_vrm(void)
+{
+        return 0;
+}
+#endif
+
 #ifndef clamp_val
 #define clamp_val SENSORS_LIMIT
 #endif

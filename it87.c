@@ -1535,7 +1535,7 @@ static int get_temp_type(struct it87_data *data, int index)
 	if ((has_temp_peci(data, index) && (reg >> 6 == index + 1)) ||
 	    (has_temp_old_peci(data, index) && (extra & 0x80)))
 		type = ttype;		/* Intel PECI or AMDTSI */
-	if (reg & BIT(index))
+	else if (reg & BIT(index))
 		type = 3;		/* thermal diode */
 	else if (reg & BIT(index + 3))
 		type = 4;		/* thermistor */

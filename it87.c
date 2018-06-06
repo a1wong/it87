@@ -704,7 +704,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
 		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP | FEAT_SCALING
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_BANK_SEL
-		  | FEAT_MMIO,
+		  | FEAT_SIX_TEMP | FEAT_MMIO,
 		.num_temp_limit = 6,
 		.num_temp_offset = 6,
 		.num_temp_map = 6,
@@ -716,7 +716,7 @@ static const struct it87_devices it87_devices[] = {
 		.features = FEAT_NEWER_AUTOPWM | FEAT_16BIT_FANS
 		  | FEAT_AVCC3 | FEAT_NEW_TEMPMAP | FEAT_SCALING
 		  | FEAT_10_9MV_ADC | FEAT_IN7_INTERNAL | FEAT_SIX_FANS
-		  | FEAT_SIX_PWM | FEAT_BANK_SEL | FEAT_MMIO,
+		  | FEAT_SIX_PWM | FEAT_BANK_SEL | FEAT_MMIO | FEAT_SIX_TEMP,
 		.num_temp_limit = 6,
 		.num_temp_offset = 6,
 		.num_temp_map = 6,
@@ -4055,23 +4055,27 @@ static int it87_probe(struct platform_device *pdev)
 	if (has_four_temp(data)) {
 		data->has_temp |= BIT(3);
 	} else if (has_six_temp(data)) {
-		u8 reg = data->read(data, IT87_REG_TEMP456_ENABLE);
+		if (sio_data->type == it8655 || sio_data->type == it8665) {
+			data->has_temp |= BIT(3) | BIT(4) | BIT(5);
+		} else {
+			u8 reg = data->read(data, IT87_REG_TEMP456_ENABLE);
 
-		/* Check for additional temperature sensors */
-		if ((reg & 0x03) >= 0x02)
-			data->has_temp |= BIT(3);
-		if (((reg >> 2) & 0x03) >= 0x02)
-			data->has_temp |= BIT(4);
-		if (((reg >> 4) & 0x03) >= 0x02)
-			data->has_temp |= BIT(5);
+			/* Check for additional temperature sensors */
+			if ((reg & 0x03) >= 0x02)
+				data->has_temp |= BIT(3);
+			if (((reg >> 2) & 0x03) >= 0x02)
+				data->has_temp |= BIT(4);
+			if (((reg >> 4) & 0x03) >= 0x02)
+				data->has_temp |= BIT(5);
 
-		/* Check for additional voltage sensors */
-		if ((reg & 0x03) == 0x01)
-			data->has_in |= BIT(10);
-		if (((reg >> 2) & 0x03) == 0x01)
-			data->has_in |= BIT(11);
-		if (((reg >> 4) & 0x03) == 0x01)
-			data->has_in |= BIT(12);
+			/* Check for additional voltage sensors */
+			if ((reg & 0x03) == 0x01)
+				data->has_in |= BIT(10);
+			if (((reg >> 2) & 0x03) == 0x01)
+				data->has_in |= BIT(11);
+			if (((reg >> 4) & 0x03) == 0x01)
+				data->has_in |= BIT(12);
+		}
 	}
 
 	data->has_beep = !!sio_data->beep_pin;

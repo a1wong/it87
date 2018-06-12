@@ -959,7 +959,7 @@ static u8 temp_map_from_reg(const struct it87_data *data, u8 reg)
 {
 	u8 map;
 
-	map  = (reg >> data->pwm_temp_map_shift) & data->pwm_temp_map_mask;
+	map = (reg >> data->pwm_temp_map_shift) & data->pwm_temp_map_mask;
 	if (map >= data->pwm_num_temp_map)	/* map is 0-based */
 		map = 0;
 

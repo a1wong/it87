@@ -250,11 +250,11 @@ static bool fix_pwm_polarity;
 
 /*----- The IT87 registers -----*/
 
-#define IT87_REG_CONFIG        0x00
+#define IT87_REG_CONFIG		0x00
 
-#define IT87_REG_ALARM1        0x01
-#define IT87_REG_ALARM2        0x02
-#define IT87_REG_ALARM3        0x03
+#define IT87_REG_ALARM1		0x01
+#define IT87_REG_ALARM2		0x02
+#define IT87_REG_ALARM3		0x03
 
 #define IT87_REG_BANK		0x06
 
@@ -262,18 +262,18 @@ static bool fix_pwm_polarity;
  * The IT8718F and IT8720F have the VID value in a different register, in
  * Super-I/O configuration space.
  */
-#define IT87_REG_VID           0x0a
+#define IT87_REG_VID		0x0a
 
 /* Interface Selection register on other chips */
-#define IT87_REG_IFSEL         0x0a
+#define IT87_REG_IFSEL		0x0a
 
 /*
  * The IT8705F and IT8712F earlier than revision 0x08 use register 0x0b
  * for fan divisors. Later IT8712F revisions must use 16-bit tachometer
  * mode.
  */
-#define IT87_REG_FAN_DIV       0x0b
-#define IT87_REG_FAN_16BIT     0x0c
+#define IT87_REG_FAN_DIV	0x0b
+#define IT87_REG_FAN_16BIT	0x0c
 
 /*
  * Monitors:
@@ -299,8 +299,8 @@ static const u8 IT87_REG_TEMP_OFFSET[] = { 0x56, 0x57, 0x59, 0x5a, 0x90, 0x91 };
 static const u8 IT87_REG_TEMP_OFFSET_8686[] = {
 					0x56, 0x57, 0x59, 0x90, 0x91, 0x92 };
 
-#define IT87_REG_FAN_MAIN_CTRL 0x13
-#define IT87_REG_FAN_CTL       0x14
+#define IT87_REG_FAN_MAIN_CTRL	0x13
+#define IT87_REG_FAN_CTL	0x14
 
 static const u8 IT87_REG_PWM[] =	{ 0x15, 0x16, 0x17, 0x7f, 0xa7, 0xaf };
 static const u8 IT87_REG_PWM_8665[] =	{ 0x15, 0x16, 0x17, 0x1e, 0x1f, 0x92 };
@@ -310,10 +310,10 @@ static const u8 IT87_REG_PWM_DUTY[] =	{ 0x63, 0x6b, 0x73, 0x7b, 0xa3, 0xab };
 static const u8 IT87_REG_VIN[]	= { 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26,
 				    0x27, 0x28, 0x2f, 0x2c, 0x2d, 0x2e };
 
-#define IT87_REG_TEMP(nr)      (0x29 + (nr))
+#define IT87_REG_TEMP(nr)	(0x29 + (nr))
 
-#define IT87_REG_VIN_MAX(nr)   (0x30 + (nr) * 2)
-#define IT87_REG_VIN_MIN(nr)   (0x31 + (nr) * 2)
+#define IT87_REG_VIN_MAX(nr)	(0x30 + (nr) * 2)
+#define IT87_REG_VIN_MIN(nr)	(0x31 + (nr) * 2)
 
 static const u8 IT87_REG_TEMP_HIGH[] =	{ 0x40, 0x42, 0x44, 0x46, 0xb4, 0xb6 };
 static const u8 IT87_REG_TEMP_LOW[] =	{ 0x41, 0x43, 0x45, 0x47, 0xb5, 0xb7 };
@@ -323,12 +323,12 @@ static const u8 IT87_REG_TEMP_HIGH_8686[] = {
 static const u8 IT87_REG_TEMP_LOW_8686[] = {
 					0x41, 0x43, 0x45, 0xb5, 0xb7, 0xb9 };
 
-#define IT87_REG_VIN_ENABLE    0x50
-#define IT87_REG_TEMP_ENABLE   0x51
-#define IT87_REG_TEMP_EXTRA    0x55
-#define IT87_REG_BEEP_ENABLE   0x5c
+#define IT87_REG_VIN_ENABLE	0x50
+#define IT87_REG_TEMP_ENABLE	0x51
+#define IT87_REG_TEMP_EXTRA	0x55
+#define IT87_REG_BEEP_ENABLE	0x5c
 
-#define IT87_REG_CHIPID        0x58
+#define IT87_REG_CHIPID		0x58
 
 static const u8 IT87_REG_AUTO_BASE[] = { 0x60, 0x68, 0x70, 0x78, 0xa0, 0xa8 };
 

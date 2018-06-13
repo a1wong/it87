@@ -1982,7 +1982,7 @@ static ssize_t set_pwm_freq(struct device *dev, struct device_attribute *attr,
 	val *= has_newer_autopwm(data) ? 256 : 128;
 
 	/* Search for the nearest available frequency */
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < ARRAY_SIZE(pwm_freq) - 1; i++) {
 		if (val > (pwm_freq[i] + pwm_freq[i + 1]) / 2)
 			break;
 	}

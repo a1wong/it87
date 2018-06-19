@@ -104,6 +104,31 @@ Building & Installing
 * sudo make install
 
 
+Using DKMS
+----------
+
+To install:
+
+* sudo make dkms
+
+To remove:
+
+* sudo make dkms_clean
+
+Notes:
+
+* The module does not provide a real version number, so `git describe --long`
+  is used to create one. This means that anything that changes the git state
+  will change the version. `make dkms_clean` should be run before making a
+  commit or an update with `git pull` as the Makefile is currently unable to
+  track the last installed version to replace it. If this doesn't happen, the
+  old version will need to be manually removed from dkms, before installing
+  the updated module.
+  Something like `dkms remove -m it87 -v <old version> --all`, followed by
+  `rm -rf /usr/src/it87-<old version>`, should do.
+  `dkms status it87` can be used to list the installed versions.
+
+
 Module Parameters
 -----------------
 

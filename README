@@ -1,3 +1,14 @@
+DRIVER REMOVAL NOTICE
+=====================
+
+I have been unable to meet support demands for this driver, resulting
+in unpleasant experience and frustration for everyone involved.
+
+Consequently, the driver will be removed from github, effective
+August 1, 2018. Interested parties are encouraged to clone the driver
+before that time and to start maintaining it on their own.
+
+
 Kernel driver it87
 ==================
 
